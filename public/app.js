@@ -1,19 +1,16 @@
-import { eventTeams, eventTitle, marketTitle, outcomeTitle, typeName, errorMessage, timezoneName } from './chinese.js';
-import { groupMarkets, preferredLine, correspondingOutcome } from './market-lines.js';
+import { eventTeams, eventTitle, marketTitle, outcomeTitle, typeName, errorMessage, teamFor } from './chinese.js';
+import { groupMarkets, preferredLine, correspondingOutcome, lineFor, lineForReference } from './market-lines.js';
 
 const $ = (selector) => document.querySelector(selector);
-const nodes = Object.fromEntries(['connection', 'mode-label', 'clock', 'timezone-label', 'update-label', 'timezone', 'notice', 'stat-events', 'stat-markets', 'stat-spread', 'stat-depth', 'date-range', 'game-count', 'games', 'match-heading', 'market-types', 'markets', 'market-link', 'book-mode', 'book-selection', 'book-summary', 'book', 'book-footnote'].map(id => [id, document.getElementById(id)]));
+const nodes = Object.fromEntries(['notice', 'stat-events', 'stat-markets', 'stat-spread', 'stat-depth', 'date-range', 'game-count', 'games', 'match-heading', 'markets', 'market-link', 'book-mode', 'book-selection', 'book-summary', 'book', 'book-footnote'].map(id => [id, document.getElementById(id)]));
 
 let state = null;
-let crownQuotes = new Map();
 let selectedEvent = null;
 let selectedToken = null;
-let selectedType = 'all';
 let expandedMarketKey = null;
 let visibleDepth = 6;
 let renderedBookToken = null;
 let transportConnected = false;
-let settingsPending = false;
 let localError = null;
 let gamesSignature = null;
 let renderedMarketEvent = null;
@@ -131,6 +128,36 @@ function selectedOutcome() {
   return null;
 }
 
+function crownComparison(game) {
+  return state?.crown?.matches?.find(match => match.comparison?.polEventId === game?.id)?.comparison ?? null;
+}
+
+function crownMarketFor(game, market) {
+  const comparison = crownComparison(game);
+  if (!comparison) return null;
+  const line = lineForReference(market, comparison.homeId, comparison.awayId).value;
+  return comparison.markets?.find(candidate => candidate.type === market.type && (market.type === 'moneyline' || candidate.line === line)) ?? null;
+}
+
+function crownDirection(game, market, outcome) {
+  if (market.type === 'totals') return /^(over|大于)/i.test(String(outcome?.name ?? '')) ? 'over' : /^(under|小于)/i.test(String(outcome?.name ?? '')) ? 'under' : null;
+  const team = teamFor(outcome?.name);
+  const comparison = crownComparison(game);
+  if (!team || !comparison?.homeId || !comparison?.awayId) return null;
+  return team.id === comparison.homeId ? 'home' : team.id === comparison.awayId ? 'away' : null;
+}
+
+function crownQuote(game, market, outcome) {
+  const comparison = crownComparison(game);
+  if (!comparison) return null;
+  const crownMarket = crownMarketFor(game, market);
+  const direction = crownDirection(game, market, outcome);
+  const side = direction && crownMarket?.sides?.find(candidate => candidate.direction === direction);
+  const raw = Number(side?.rawOdds);
+  const valid = crownMarket?.status === 'matched' && side && Number.isFinite(raw) && raw > 0 && side.comparisonStatus === 'comparable_quote';
+  return { text: valid ? `皇冠 ${raw.toFixed(3)}` : '皇冠暂无有效水位', valid };
+}
+
 function preferredOutcome(event) {
   const market = event?.markets.find(market => market.acceptingOrders && !market.closed && primaryTypes.has(market.type)) || event?.markets.find(market => market.acceptingOrders && !market.closed) || event?.markets[0];
   return market?.outcomes[0]?.tokenId || null;
@@ -139,17 +166,10 @@ function preferredOutcome(event) {
 function status() {
   const verifiedAt = state?.verifiedAt || state?.updatedAt;
   const stale = verifiedAt && Date.now() - new Date(verifiedAt).getTime() > 30000;
-  const healthy = state?.status === 'live' && !stale && transportConnected;
   const demo = state?.mode === 'demo';
-  nodes.connection.className = `status-pill ${healthy && !demo ? 'connected' : demo ? 'demo' : 'disconnected'}`;
-  nodes.connection.replaceChildren(el('i'), el('span', '', demo ? '演示模式' : healthy ? state?.stream?.connected ? '实时推送' : '3 秒行情快照' : state?.status === 'degraded' && transportConnected && !stale ? '部分行情异常' : state ? '行情连接异常' : '正在连接'));
-  nodes['mode-label'].textContent = demo ? '模拟数据 / 非真实行情' : '只读行情';
-  nodes['update-label'].textContent = verifiedAt ? `行情核验于 ${date(verifiedAt, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}${stale ? ' · 已过期' : ''}` : '尚无有效行情';
-  const message = settingsPending ? '正在切换筛选条件…' : errorMessage(localError || state?.error) || (demo ? '当前为演示模式：所有比赛与订单簿均为模拟数据，用于体验界面，不能用于交易判断。' : !transportConnected && state ? '页面行情通道已断开，正在重连。显示的是最近收到的数据，请留意核验时间。' : stale ? '行情已超过 30 秒未完成有效核验，显示的是上次收到的数据。' : '');
+  const message = errorMessage(localError || state?.error) || (demo ? '当前为演示模式：所有比赛与订单簿均为模拟数据，用于体验界面，不能用于交易判断。' : !transportConnected && state ? '页面行情通道已断开，正在重连。显示的是最近收到的数据，请留意核验时间。' : stale ? '行情已超过 30 秒未完成有效核验，显示的是上次收到的数据。' : '');
   nodes.notice.textContent = message;
   nodes.notice.className = `notice ${!message ? 'hidden' : demo && !state?.error ? 'demo-notice' : ''}`;
-  const currentTime = new Date();
-  nodes.clock.textContent = new Intl.DateTimeFormat('zh-CN', { timeZone: state?.timezone || 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(currentTime);
 }
 
 function renderGames() {
@@ -181,7 +201,7 @@ function renderGamesContent() {
     const gameMeta = el('div', 'game-meta');
     gameMeta.append(el('span', 'game-time mono', date(event.startTime, { hour: '2-digit', minute: '2-digit', hour12: false })), el('span', 'game-market-count', `${event.markets.length} 个盘口`));
     button.append(el('span', 'game-day-mobile', date(event.startTime, { month: 'numeric', day: 'numeric', weekday: 'short' })), gameMeta, gameTeams(event), el('span', 'game-arrow', '↗'));
-    button.addEventListener('click', () => { selectedEvent = event.id; selectedToken = preferredOutcome(event); selectedType = 'all'; expandedMarketKey = null; render(); });
+    button.addEventListener('click', () => { selectedEvent = event.id; selectedToken = preferredOutcome(event); expandedMarketKey = null; render(); });
     nodes.games.append(button);
   }
   nodes.games.scrollTop = scrollTop;
@@ -203,7 +223,6 @@ function renderMarketsContent() {
   const scrollTop = renderedMarketEvent === game?.id ? nodes.markets.scrollTop : 0;
   renderedMarketEvent = game?.id;
   nodes['match-heading'].replaceChildren();
-  nodes['market-types'].replaceChildren();
   nodes.markets.replaceChildren();
   nodes['market-link'].classList.add('hidden');
   if (!game) {
@@ -211,31 +230,18 @@ function renderMarketsContent() {
     nodes.markets.append(empty('等待赛程', '获得比赛后，这里会列出可用盘口及各结果报价。', '◈'));
     return;
   }
-  nodes['match-heading'].append(el('div', 'eyebrow', '美职篮 · 比赛盘口'), el('h3', 'sr-only', eventTitle(game)), matchup(game), el('p', 'match-date', date(game.startTime, { month: 'long', day: 'numeric', weekday: 'long', hour: '2-digit', minute: '2-digit', hour12: false })));
+  nodes['match-heading'].append(
+    el('div', 'eyebrow', '美职篮 · 比赛盘口'),
+    el('h3', 'sr-only', eventTitle(game)),
+    el('p', 'match-date', date(game.startTime, { month: 'long', day: 'numeric', weekday: 'long', hour: '2-digit', minute: '2-digit', hour12: false })),
+    matchup(game)
+  );
   if (typeof game.slug === 'string' && /^[a-zA-Z0-9_-]+$/.test(game.slug)) {
     nodes['market-link'].href = `https://polymarket.com/event/${encodeURIComponent(game.slug)}`;
     nodes['market-link'].classList.remove('hidden');
   }
-  const types = ['all', ...new Set(game.markets.map(market => market.type || 'other'))];
-  if (!types.includes(selectedType)) selectedType = 'all';
-  for (const type of types) {
-    const button = el('button', type === selectedType ? 'active' : '', type === 'all' ? '全部盘口' : typeName(type));
-    button.type = 'button';
-    button.addEventListener('click', () => {
-      selectedType = type;
-      if (type !== 'all' && expandedMarketKey !== `${game.id}:${type}`) expandedMarketKey = null;
-      nodes.markets.scrollTop = 0;
-      if (type !== 'all' && selectedOutcome()?.market.type !== type) {
-        const group = groupMarkets(game).find(group => group.type === type);
-        const line = group && preferredLine(group.lines, chosenLines.get(`${game.id}:${type}`));
-        selectedToken = line ? correspondingOutcome(selectedOutcome()?.outcome, line.market)?.tokenId ?? null : null;
-      }
-      renderMarkets(); renderBook(); renderStats();
-    });
-    nodes['market-types'].append(button);
-  }
   const selection = selectedOutcome();
-  for (const group of groupMarkets(game).filter(group => selectedType === 'all' || group.type === selectedType)) {
+  for (const group of groupMarkets(game)) {
     const key = `${game.id}:${group.type}`;
     const selectedInGroup = selection?.market.type === group.type;
     const isExpanded = selectedInGroup && expandedMarketKey === key;
@@ -276,11 +282,8 @@ function renderMarketsContent() {
       button.setAttribute('aria-label', `${outcomeTitle(outcome, market)}，买入价 ${cents(quote.ask)}`);
       button.title = `买入价（卖一）：${cents(quote.ask)}；卖出价（买一）：${cents(quote.bid)}`;
       button.append(el('span', 'outcome-name', outcomeTitle(outcome, market)), el('strong', 'mono', cents(quote.ask)));
-      const crown = crownQuotes.get(outcome.tokenId);
-      if (crown) {
-        const format = ({hongkong:'香港盘',decimal:'十进制',american:'美式'})[crown.oddsFormat] ?? '格式待核验';
-        button.append(el('small', 'crown-inline-quote', `皇冠 ${crown.rawOdds ?? '—'}（${format}）${crown.comparisonStatus === 'comparable_quote' ? '' : ' · 暂不可比'}`));
-      }
+      const crown = crownQuote(game, market, outcome);
+      if (crown) button.append(el('small', `crown-water ${crown.valid ? 'valid' : 'unavailable'}`, crown.text));
       if (market.closed) button.append(el('small', 'quote-warning', '已结束'));
       else if (quote.book?.error) button.append(el('small', 'quote-warning', '行情异常'));
       else if (!quote.book) button.append(el('small', 'quote-warning', '等待报价'));
@@ -428,9 +431,6 @@ function render() {
     selectedToken = preferredOutcome(preferredEvent);
   }
   if (!selectedOutcome()) selectedToken = preferredOutcome(activeGame());
-  nodes.timezone.value = state.timezone;
-  nodes['timezone-label'].textContent = timezoneName(state.timezone);
-  document.querySelectorAll('[data-range]').forEach(button => button.classList.toggle('active', button.dataset.range === state.range));
   renderGames(); renderMarkets(); renderBook(); renderStats(); status();
 }
 
@@ -440,31 +440,6 @@ function acceptState(next) {
   state = next;
   render();
 }
-
-async function updateSettings(settings) {
-  localError = null;
-  settingsPending = true; status();
-  document.querySelectorAll('[data-range], #timezone').forEach(node => { node.disabled = true; });
-  try {
-    const response = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) });
-    if (!response.ok) throw new Error('筛选条件更新失败，请稍后重试。');
-    const result = await response.json();
-    if (result.events) acceptState(result);
-    else {
-      const snapshot = await fetch('/api/state');
-      if (snapshot.ok) acceptState(await snapshot.json());
-    }
-  } catch (error) {
-    localError = error.message;
-  } finally {
-    settingsPending = false;
-    document.querySelectorAll('[data-range], #timezone').forEach(node => { node.disabled = false; });
-    status();
-  }
-}
-
-document.querySelectorAll('[data-range]').forEach(button => button.addEventListener('click', () => updateSettings({ range: button.dataset.range })));
-nodes.timezone.addEventListener('change', () => updateSettings({ timezone: nodes.timezone.value }));
 
 async function init() {
   nodes.games.append(empty('正在获取比赛', '正在读取预测市场的美职篮赛程与盘口。', '◷'));
@@ -487,15 +462,3 @@ async function init() {
 }
 
 init();
-
-window.addEventListener('crown:comparison', event => {
-  const quotes = new Map();
-  for (const match of event.detail?.matches ?? []) {
-    if (match.comparison?.status !== 'matched') continue;
-    for (const market of match.comparison.markets ?? []) if (market.status === 'matched') for (const side of market.sides) {
-      if (side.polTokenId) quotes.set(side.polTokenId, side);
-    }
-  }
-  crownQuotes = quotes;
-  if (state) renderMarkets();
-});

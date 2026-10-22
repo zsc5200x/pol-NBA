@@ -20,7 +20,7 @@ export class CrownClient {
     this.lastRequest = Date.now();
     return new Promise((resolve, reject) => {
       const request = https.request(ENDPOINT, { method: 'POST', signal, agent: proxy ? new HttpsProxyAgent(proxy) : undefined,
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body), Cookie: session.cookie, Accept: '*/*' } }, response => {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'Content-Length': Buffer.byteLength(body), Cookie: session.cookie, Accept: '*/*', Origin: new URL(ENDPOINT).origin, Referer: `${new URL(ENDPOINT).origin}/`, 'User-Agent': 'Mozilla/5.0' } }, response => {
         const chunks = []; let size = 0;
         response.on('data', chunk => { size += chunk.length; if (size > 8 * 1024 * 1024) response.destroy(new CrownError('EMPTY_OR_OVERSIZE')); else chunks.push(chunk); });
         response.on('error', () => reject(new CrownError('NETWORK_ERROR')));

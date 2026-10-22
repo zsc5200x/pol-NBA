@@ -1,28 +1,99 @@
 import http from 'node:http';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { resolve, extname } from 'node:path';
 import { Monitor } from './src/monitor.mjs';
 import { CrownMonitor } from './src/crown/monitor.mjs';
+import { CrownLoginError, CrownLoginService } from './src/crown/login.mjs';
 
 const PUBLIC = fileURLToPath(new URL('./public/', import.meta.url));
-const FILES = new Map([['/', 'index.html'], ['/app.js', 'app.js'], ['/chinese.js', 'chinese.js'], ['/market-lines.js', 'market-lines.js'], ['/crown.js', 'crown.js'], ['/styles.css', 'styles.css']]);
+const DEFAULT_CROWN_CONFIG = resolve('.local/crown/live-config.json');
+const FILES = new Map([['/', 'index.html'], ['/app.js', 'app.js'], ['/chinese.js', 'chinese.js'], ['/market-lines.js', 'market-lines.js'], ['/crown-login.js', 'crown-login.js'], ['/styles.css', 'styles.css']]);
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
 
-export function createApp({ monitor = new Monitor(), crown = new CrownMonitor({ configPath: monitor.demo ? null : process.env.CROWN_CONFIG_PATH }) } = {}) {
+function isLoopback(address = '') {
+  return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
+}
+
+function isLocalSameOriginRead(request) {
+  if (!isLoopback(request.socket.remoteAddress)) return false;
+  const host = request.headers.host ?? '';
+  let parsedHost;
+  try { parsedHost = new URL(`http://${host}`); } catch { return false; }
+  if (!['localhost', '127.0.0.1', '[::1]'].includes(parsedHost.hostname)) return false;
+  const origin = request.headers.origin;
+  if (origin && origin !== `http://${host}`) return false;
+  return !['cross-site', 'same-site'].includes(request.headers['sec-fetch-site']);
+}
+
+function isLocalSameOriginWrite(request) {
+  if (!isLocalSameOriginRead(request)) return false;
+  return request.headers.origin === `http://${request.headers.host}`;
+}
+
+async function readEmptyJson(request) {
+  if (!request.headers['content-type']?.startsWith('application/json')) throw new CrownLoginError('JSON_REQUIRED', '请求格式无效。', 415);
+  let body = '';
+  for await (const chunk of request) {
+    body += chunk;
+    if (body.length > 4096) throw new CrownLoginError('BODY_TOO_LARGE', '请求内容过大。', 413);
+  }
+  let value;
+  try { value = JSON.parse(body || '{}'); } catch { throw new CrownLoginError('JSON_INVALID', '请求格式无效。', 400); }
+  if (!value || Array.isArray(value) || typeof value !== 'object' || Object.keys(value).length) throw new CrownLoginError('JSON_INVALID', '请求格式无效。', 400);
+  return value;
+}
+
+function crownConfigPath(monitor) {
+  if (monitor.demo) return null;
+  if (process.env.CROWN_CONFIG_PATH) return process.env.CROWN_CONFIG_PATH;
+  return existsSync(DEFAULT_CROWN_CONFIG) ? DEFAULT_CROWN_CONFIG : null;
+}
+
+export function createApp({ monitor = new Monitor(), crown = new CrownMonitor({ configPath: crownConfigPath(monitor) }), crownLogin = new CrownLoginService() } = {}) {
   const clients = new Set();
   const send = (response, state) => {
     if (response.writableLength > 2 * 1024 * 1024) { response.destroy(); return; }
     response.write(`event: state\ndata: ${JSON.stringify(state)}\n\n`);
   };
-  const broadcast = state => { for (const response of clients) send(response, state); };
+  const snapshot = () => {
+    const marketState = monitor.snapshot();
+    return { ...marketState, crown: crown.snapshot(marketState) };
+  };
+  const broadcast = () => { const state = snapshot(); for (const response of clients) send(response, state); };
   monitor.on('state', broadcast);
+  crown.on?.('state', broadcast);
   const server = http.createServer(async (request, response) => {
     const url = new URL(request.url, 'http://localhost');
     response.setHeader('X-Content-Type-Options', 'nosniff');
     response.setHeader('Referrer-Policy', 'no-referrer');
     response.setHeader('Content-Security-Policy', "default-src 'self'; connect-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-ancestors 'none'");
     const json = (status, payload) => { response.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); response.end(JSON.stringify(payload)); };
+    if (request.method === 'GET' && url.pathname === '/api/crown/login/status') {
+      if (!isLocalSameOriginRead(request)) { json(403, { error: '皇冠登录仅允许本机同源访问' }); return; }
+      try { json(200, await crownLogin.status()); }
+      catch { json(500, { error: '无法读取本机皇冠登录状态。' }); }
+      return;
+    }
+    const loginActions = new Map([
+      ['/api/crown/login/start', () => crownLogin.start()],
+      ['/api/crown/login/verify', () => crownLogin.verifyAndSave()],
+      ['/api/crown/login/cancel', () => crownLogin.cancel()],
+      ['/api/crown/login/clear', () => crownLogin.clear()],
+    ]);
+    if (request.method === 'POST' && loginActions.has(url.pathname)) {
+      if (!isLocalSameOriginWrite(request)) { json(403, { error: '皇冠登录操作仅允许本机同源访问' }); return; }
+      try {
+        await readEmptyJson(request);
+        json(200, await loginActions.get(url.pathname)());
+      } catch (error) {
+        const statusCode = error instanceof CrownLoginError ? error.statusCode : 500;
+        const message = error instanceof CrownLoginError ? error.message : '皇冠登录操作未完成。';
+        json(statusCode, { error: message });
+      }
+      return;
+    }
     if (request.method === 'GET' && url.pathname === '/api/crown/captures') { json(200, await crown.captures()); return; }
     if (request.method === 'GET' && url.pathname === '/api/crown') {
       const type = url.searchParams.get('type'); const source = url.searchParams.get('source');
@@ -34,7 +105,7 @@ export function createApp({ monitor = new Monitor(), crown = new CrownMonitor({ 
       if (!id || id.length > 100) { json(400, { error: '需要比赛标识' }); return; }
       json(200, { matchId: id, history: crown.store.history(id) }); return;
     }
-    if (request.method === 'GET' && url.pathname === '/api/state') { json(200, monitor.snapshot()); return; }
+    if (request.method === 'GET' && url.pathname === '/api/state') { json(200, snapshot()); return; }
     if (request.method === 'GET' && url.pathname === '/api/health') {
       const state = monitor.snapshot();
       json(200, { server: 'ok', mode: state.mode, upstream: state.status, events: state.events.length, books: Object.keys(state.books).length, crown: crown.state.status });
@@ -43,7 +114,7 @@ export function createApp({ monitor = new Monitor(), crown = new CrownMonitor({ 
     if (request.method === 'GET' && url.pathname === '/api/stream') {
       response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
       clients.add(response);
-      send(response, monitor.snapshot());
+      send(response, snapshot());
       request.on('close', () => clients.delete(response));
       return;
     }
@@ -78,9 +149,9 @@ export function createApp({ monitor = new Monitor(), crown = new CrownMonitor({ 
   });
   const heartbeat = setInterval(() => { for (const response of clients) response.write(': heartbeat\n\n'); }, 15000);
   heartbeat.unref();
-  server.on('close', () => { clearInterval(heartbeat); monitor.off('state', broadcast); });
-  server.on('listening', () => crown.start());
-  return { server, monitor, crown, close: () => { monitor.stop(); for (const client of clients) client.end(); void crown.stop().finally(() => server.close()); } };
+  server.on('close', () => { clearInterval(heartbeat); monitor.off('state', broadcast); crown.off?.('state', broadcast); });
+  server.on('listening', () => { crown.start(); void crownLogin.startMonitoring?.(); });
+  return { server, monitor, crown, crownLogin, close: () => { monitor.stop(); for (const client of clients) client.end(); void Promise.all([crown.stop(), crownLogin.close()]).finally(() => server.close()); } };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

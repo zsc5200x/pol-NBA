@@ -2,22 +2,22 @@
 
 ## 当前交付边界
 
-本模块是只读的配置驱动采集器、SQLite 持久化、同场同线匹配与中文对比页面。**已收到并解析用户上传的历史响应样本，但没有有效会话；早盘文件与内部模式标记冲突，时区、盘口语义和全部覆盖均未验收。** 仓库不含任何皇冠凭据、虚构的真实响应，也不内置未经捕获的 filter 值。配置示例故意保持 `reviewed:false` 和未知字段 `null`，直接复制不能采集。
+本模块使用本项目独立保存的皇冠会话，读取今日和早盘 NBA 列表及单场详情。主页面顶部的“皇冠配置”打开本项目的登录窗口，不连接 HD-ps38；同场、同分值的全场独赢、让分、大小分水位显示在 Polymarket 报价下方，包含 `Main` 响应中的附加全场线。配置示例展示已核对的详情字段，但仍保留 `reviewed:false` 和空证据路径；需要本机有效会话及捕获证据才能启动。
 
-字段现状见 [crown-field-mapping.md](crown-field-mapping.md)。通用采集与换算测试使用合成合同；另有专门的上传样本回归测试，使用允许字段提取后的派生文件。两者均不等同于带有效会话的实时接口验证。
+字段与本次实时验证结果见 [crown-field-mapping.md](crown-field-mapping.md)。回归测试同时覆盖合成合同和允许字段脱敏后的真实详情。逐场所有分类的完整覆盖仍需独立网页证据，不能用采集成功数量替代。
 
 ## 环境
 
 需要 Node.js **22.13 或以上**（使用内置 `node:sqlite`；当前开发环境 Node.js 24）。`npm ci` 安装依赖后，继续使用 `npm start`，原有 Polymarket 功能保持独立。
 
-默认不启用皇冠：页面明确显示“皇冠未配置”，不会访问私有接口。启用后数据库默认位于项目的 `.local/crown.sqlite`，可通过 `CROWN_DB_PATH` 改到其他本机路径。目录、SQLite、HAR、会话文件已加入忽略规则，HTTP 服务不提供这些文件。
+如果本机存在 `.local/crown/live-config.json`，服务启动会自动加载映射并开始轮询，也可用 `CROWN_CONFIG_PATH` 指定配置。没有配置时只运行 Polymarket。皇冠登录服务独立核验会话；采集器每次请求都读取本项目保存的会话。SQLite 默认位于项目的 `.local/crown.sqlite`，可通过 `CROWN_DB_PATH` 改到其他本机路径。私有目录和会话文件均被 Git 忽略，HTTP 服务不提供这些文件。
 
 ## 安全保存会话（由用户本机完成）
 
-1. 在合法登录的浏览器会话中获取实际 NBA 今日、早盘、单场全场分类请求；不进行下注操作，不猜测分类参数。
-2. 创建本机私有目录，例如项目内被 Git 忽略的 `.local/crown/`，目录权限设为 700。把 `config/crown.example.json` 复制为其中的 `config.json`。
-3. 在同目录建立权限为 600 的 `session.json`，其结构是 `{"params":{"uid":实际本机会话值,"ver":实际版本值},"cookie":实际Cookie字符串}`。必要的已捕获非核心表单字段可加入 params；禁止把凭据写进配置模板、源码、命令行参数、日志、前端或聊天。
-4. 此文档中的“实际…”是说明，不是可直接使用的 JSON。请让本地 Codex 在你的授权下从本机安全会话或文件中配置，不要把原始凭据发到聊天。会话文件每次请求重新读取，失效后更新文件即可供后续轮询恢复。
+1. 在主页面点“皇冠配置”，打开本项目创建的独立 Chrome 窗口，并在皇冠页面手动登录和完成验证。
+2. 回到 pol-NBA 点“验证并保存会话”。后端只接受目标来源上的 `mem_online` 请求字段，先执行只读在线检查；通过后将 Cookie、UID、版本和语言参数作为整体加密保存。
+3. macOS 使用系统钥匙串保存加密密钥，密文保存在项目忽略目录 `.local/crown/session.bin`。账号密码始终由皇冠登录页接收，不经过 pol-NBA 表单或聊天。HD-ps38 的服务、数据库和会话都不会被读取。
+4. 登录会话与盘口读取权限分开验证。真实比赛列表和盘口映射仍需完成后续字段核对，未审核的映射会让采集器停止。
 
 ## 核对真实字段
 
@@ -36,7 +36,10 @@
 | `matchIdPath` | 指向主比赛 GID 的关联字段，不是任意子记录 ID |
 | `phasePath` / `fullGameValue` | 证明全场的阶段字段及精确值 |
 | `linePath` | 大小分总线或让分数值，不从 MORE 计数推断 |
-| `lineReference` | 让分线以 `home` 还是 `away` 为基准，程序统一存为主队线 |
+| `lineReference` 或 `favoritePath/favoriteValues` | 已有带符号线可指定 home/away；皇冠非负幅度用 `STRONG` 的 H/C 指定让分球队，两种方式互斥，最终统一为主队线 |
+| `oppositeLinePath` | 大小分另一侧线值；两侧不同或缺失则拒绝组合 |
+| `rowStatusPath/rowStatusValues` | `GOPEN` 行级状态，与 `SW_*` 合并，关闭优先且未知状态不开放 |
+| `skipEmptyLine` | 仅跳过已关闭、空线且零/空水位的占位，不跳过异常有价记录 |
 | `odds` | 大小分为 `{over:路径,under:路径}`；让分/独赢为 `{home:路径,away:路径}` |
 | `oddsFormat` | 经核对的 `hongkong`、`decimal` 或 `american`，其他格式暂不换算 |
 | `statusPath` / `statusValues` | 经验证的开放、暂停、关闭标记，值映射为 `open/suspended/closed` |
@@ -63,9 +66,9 @@ npm run crown:check -- /本机私有目录/config.json
 CROWN_CONFIG_PATH=/本机私有目录/config.json npm start
 ```
 
-可配置 `intervalMs`（两轮之间间隔，最少 10 秒）、`requestGapMs`（请求之间最少 500 毫秒）、`timeoutMs`。请求串行限速，短暂超时/网络/限流最多尝试 3 次并退避；整轮失败进一步退避，最大 5 分钟。单轮时间取决于比赛与分类数量，不保证所有比赛每 30 秒更新。仅轮询，不假设存在皇冠 WebSocket。Ctrl+C 会中止当前请求并等待任务退出，随后关闭数据库。
+可配置 `intervalMs`（一轮结束后的等待时间，默认及最少 10 秒）、`requestGapMs`（请求之间间隔，默认及最少 500 毫秒）、`timeoutMs`。每轮开始时重新加载配置，无需重启；已经安排的旧等待会先结束一次。请求串行限速，短暂超时/网络/限流最多尝试 3 次并退避；整轮失败进一步退避，最大 5 分钟。14 场比赛、2 个列表及每场 1 个详情请求时，本机实测约 18 秒一轮；单轮时间取决于比赛与分类数量、网络与重试。Ctrl+C 会中止当前请求并等待任务退出，随后关闭数据库。
 
-SQLite 保存比赛、当前盘口、历史快照、任务日志与恢复元数据。变化时保存快照，未变至少 5 分钟保留一次；每次成功检查仍更新当前表时间。重启保留历史，旧数据不冒充新采集。缺失盘口保留最近已知状态并逐渐过期，不自动封盘。
+SQLite 保存比赛、当前盘口、历史快照、任务日志与恢复元数据。变化时保存快照，未变至少 5 分钟保留一次；每次成功检查仍更新当前表时间。重启保留历史，旧数据不冒充新采集。缺失盘口保留历史记录和原检查时间，但从最新成功详情的当前比较集合移除，不自动标为封盘。每轮进度清空不影响上轮仍新鲜的有效水位；失败或重启后须重新验证。
 
 ## 比较规则
 
@@ -78,7 +81,7 @@ SQLite 保存比赛、当前盘口、历史快照、任务日志与恢复元数�
 
 ## HTTP 与验收
 
-`GET /api/crown` 返回安全状态、去重计数、当前盘口与同线比较，可用 `source=today|early`、`type=totals|spreads|moneyline`、`matchId` 筛选。`GET /api/crown/history?matchId=...` 返回最近 100 条快照。没有下单、登录、凭据上传或修改采集配置的浏览器 API。
+`GET /api/crown` 返回安全状态、去重计数、当前盘口与同线比较，可用 `source=today|early`、`type=totals|spreads|moneyline`、`matchId` 筛选。`GET /api/crown/history?matchId=...` 返回最近 100 条快照。这些行情接口只读。独立登录流程使用仅限本机同源的 `/api/crown/login/*` 接口，账号密码仍由皇冠登录页接收。
 
 本机完成捕获、映射、两个模式真实请求和逐场网页全盘口核对后，才能验收对应真实能力。缺少这些前提时，代码测试通过不等于真实接入成功。
 
@@ -90,13 +93,13 @@ npm run crown:inspect -- --today /本机样本/今日.txt --early /本机样本/
 
 该工具只观察结构并生成私有报告：合并列表 GID、检查文件标签与响应模式是否冲突、按详情 GIDM 聚合同一比赛家族，并列出原始 R/OU/M 候选。它不猜时区、主客、大/小、STRONG 方向或水位格式，不将样本写成当前实时盘口。文件可解析与“接口已实时验证/全盘口已覆盖”是不同结果。
 
-生成报告后，页面“历史响应样本核对”可查看结构、来源冲突和原始线值，完全独立于实时比较。报告默认从 `.local/crown/capture-report.json` 读取，可用 `CROWN_CAPTURE_REPORT_PATH` 指定其他本机文件。接口为只读的 `/api/crown/captures`，报告不含原始 Cookie、uid 或完整原始响应。
+生成报告后，可通过只读接口查看结构、来源冲突和原始线值，完全独立于实时比较。报告默认从 `.local/crown/capture-report.json` 读取，可用 `CROWN_CAPTURE_REPORT_PATH` 指定其他本机文件。接口为只读的 `/api/crown/captures`，报告不含原始 Cookie、uid 或完整原始响应。
 
 对于已确认通过 GIDM 关联的详情规则，配置 `matchReference:"familyId"`，列表 `fields.familyId` 对应经核对的 GIDM 路径；比赛唯一标识仍是列表主 GID，不改为子 GID。可配置 `sourceModePath` 校验真实响应模式，例如当前样本观察到的 `phpData.NOWSHOWTYPE`；若早盘响应仍为 today，采集拒绝当作早盘成功。
 
 ### 请求参数证据也是必要条件
 
-每个列表/详情 profile 还需要 `requestEvidence:{path,sha256,reviewedAt}`，引用脱敏后的实际 Network 请求元信息 JSON，结构为 `{endpoint,method:"POST",params:{...已捕获的非凭据参数}}`。不在其中保存 Cookie、uid 或 ver 值。运行时会校验操作、模式、篮球类型、分类 filter 和显式附加参数是否与捕获一致；不能给现有响应随意套一个新 filter。时间戳字段如需动态更新，也必须存在于已捕获请求中。当前上传的 4 个文件没有这类实际请求元信息，因此不能用它们直接解锁实时采集。
+每个列表/详情 profile 还需要 `requestEvidence:{path,sha256,reviewedAt}`，引用脱敏后的实际 Network 请求元信息 JSON，结构为 `{endpoint,method:"POST",params:{...已捕获的非凭据参数}}`。不在其中保存 Cookie、uid 或 ver 值。运行时会校验操作、模式、篮球类型、分类 filter 和显式附加参数是否与捕获一致；不能给现有响应随意套一个新 filter。时间戳字段如需动态更新，也必须存在于已捕获请求中。早期上传文件不包含足够的请求元信息；后续本机实际请求的脱敏证据已另行保存在 `.local/crown/evidence/`。
 
 页面中的已确认时间统一按北京时间（`Asia/Shanghai`）显示，不受电脑本机时区影响；历史样本的无时区原始时间仍标记为待核验。显示偏好不能作为接口原始时区的证据。
 

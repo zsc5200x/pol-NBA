@@ -1,0 +1,397 @@
+{
+  "_fixture": "Allowlisted market fields from an authenticated response captured on 2026-10-22; credentials and unrelated fields excluded.",
+  "response": {
+    "GAMES": {
+      "GAME9": {
+        "GID": "10636924",
+        "GIDM": "1540988",
+        "MS": "10636922_2",
+        "IS_MASTER": "N",
+        "TEAM_H": "华盛顿奇才",
+        "TEAM_C": "多伦多猛龙",
+        "STRONG": "H",
+        "GOPEN": "N",
+        "PLAYS": {
+          "R": {
+            "SW_R": "Y",
+            "RATIO_R": "",
+            "IOR_RH": "0",
+            "IOR_RC": "0"
+          },
+          "OU": {
+            "SW_OU": "Y",
+            "RATIO_OUO": "",
+            "RATIO_OUU": "",
+            "IOR_OUH": "0",
+            "IOR_OUC": "0"
+          },
+          "M": {
+            "SW_M": "N",
+            "IOR_MH": "0",
+            "IOR_MC": "0"
+          }
+        }
+      },
+      "GAME8": {
+        "GID": "10636923",
+        "GIDM": "1540988",
+        "MS": "10636922_1",
+        "IS_MASTER": "N",
+        "TEAM_H": "华盛顿奇才",
+        "TEAM_C": "多伦多猛龙",
+        "STRONG": "H",
+        "GOPEN": "N",
+        "PLAYS": {
+          "R": {
+            "SW_R": "Y",
+            "RATIO_R": "",
+            "IOR_RH": "0",
+            "IOR_RC": "0"
+          },
+          "OU": {
+            "SW_OU": "Y",
+            "RATIO_OUO": "",
+            "RATIO_OUU": "",
+            "IOR_OUH": "0",
+            "IOR_OUC": "0"
+          },
+          "M": {
+            "SW_M": "N",
+            "IOR_MH": "0",
+            "IOR_MC": "0"
+          }
+        }
+      },
+      "GAME7": {
+        "GID": "10636922",
+        "GIDM": "1540988",
+        "MS": "",
+        "IS_MASTER": "N",
+        "TEAM_H": "华盛顿奇才",
+        "TEAM_C": "多伦多猛龙",
+        "STRONG": "C",
+        "GOPEN": "N",
+        "PLAYS": {
+          "R": {
+            "SW_R": "Y",
+            "RATIO_R": "",
+            "IOR_RH": "0",
+            "IOR_RC": "0"
+          },
+          "OU": {
+            "SW_OU": "Y",
+            "RATIO_OUO": "",
+            "RATIO_OUU": "",
+            "IOR_OUH": "0",
+            "IOR_OUC": "0"
+          },
+          "M": {
+            "SW_M": "N",
+            "IOR_MH": "0",
+            "IOR_MC": "0"
+          }
+        }
+      },
+      "GAME6": {
+        "GID": "10636921",
+        "GIDM": "1540988",
+        "MS": "10636915_6",
+        "IS_MASTER": "N",
+        "TEAM_H": "华盛顿奇才",
+        "TEAM_C": "多伦多猛龙",
+        "STRONG": "H",
+        "GOPEN": "N",
+        "PLAYS": {
+          "R": {
+            "SW_R": "Y",
+            "RATIO_R": "",
+            "IOR_RH": "0",
+            "IOR_RC": "0"
+          },
+          "OU": {
+            "SW_OU": "Y",
+            "RATIO_OUO": "",
+            "RATIO_OUU": "",
+            "IOR_OUH": "0",
+            "IOR_OUC": "0"
+          },
+          "M": {
+            "SW_M": "N",
+            "IOR_MH": "0",
+            "IOR_MC": "0"
+          }
+        }
+      },
+      "GAME5": {
+        "GID": "10636920",
+        "GIDM": "1540988",
+        "MS": "10636915_5",
+        "IS_MASTER": "N",
+        "TEAM_H": "华盛顿奇才",
+        "TEAM_C": "多伦多猛龙",
+        "STRONG": "H",
+        "GOPEN": "N",
+        "PLAYS": {
+          "R": {
+            "SW_R": "Y",
+            "RATIO_R": "",
+            "IOR_RH": "0",
+            "IOR_RC": "0"
+          },
+          "OU": {
+            "SW_OU": "Y",
+            "RATIO_OUO": "",
+            "RATIO_OUU": "",
+            "IOR_OUH": "0",
+            "IOR_OUC": "0"
+          },
+          "M": {
+            "SW_M": "N",
+            "IOR_MH": "0",
+            "IOR_MC": "0"
+          }
+        }
+      },
+      "GAME4": {
+        "GID": "10636919",
+        "GIDM": "1540988",
+        "MS": "10636915_4",
+        "IS_MASTER": "N",
+        "TEAM_H": "华盛顿奇才",
+        "TEAM_C": "多伦多猛龙",
+        "STRONG": "H",
+        "GOPEN": "N",
+        "PLAYS": {
+          "R": {
+            "SW_R": "Y",
+            "RATIO_R": "",
+            "IOR_RH": "0",
+            "IOR_RC": "0"
+          },
+          "OU": {
+            "SW_OU": "Y",
+            "RATIO_OUO": "",
+            "RATIO_OUU": "",
+            "IOR_OUH": "0",
+            "IOR_OUC": "0"
+          },
+          "M": {
+            "SW_M": "N",
+            "IOR_MH": "0",
+            "IOR_MC": "0"
+          }
+        }
+      },
+      "GAME3": {
+        "GID": "10636918",
+        "GIDM": "1540988",
+        "MS": "10636915_3",
+        "IS_MASTER": "N",
+        "TEAM_H": "华盛顿奇才",
+        "TEAM_C": "多伦多猛龙",
+        "STRONG": "H",
+        "GOPEN": "N",
+        "PLAYS": {
+          "R": {
+            "SW_R": "Y",
+            "RATIO_R": "",
+            "IOR_RH": "0",
+            "IOR_RC": "0"
+          },
+          "OU": {
+            "SW_OU": "Y",
+            "RATIO_OUO": "",
+            "RATIO_OUU": "",
+            "IOR_OUH": "0",
+            "IOR_OUC": "0"
+          },
+          "M": {
+            "SW_M": "N",
+            "IOR_MH": "0",
+            "IOR_MC": "0"
+          }
+        }
+      },
+      "GAME2": {
+        "GID": "10636917",
+        "GIDM": "1540988",
+        "MS": "10636915_2",
+        "IS_MASTER": "N",
+        "TEAM_H": "华盛顿奇才",
+        "TEAM_C": "多伦多猛龙",
+        "STRONG": "H",
+        "GOPEN": "N",
+        "PLAYS": {
+          "R": {
+            "SW_R": "Y",
+            "RATIO_R": "",
+            "IOR_RH": "0",
+            "IOR_RC": "0"
+          },
+          "OU": {
+            "SW_OU": "Y",
+            "RATIO_OUO": "",
+            "RATIO_OUU": "",
+            "IOR_OUH": "0",
+            "IOR_OUC": "0"
+          },
+          "M": {
+            "SW_M": "N",
+            "IOR_MH": "0",
+            "IOR_MC": "0"
+          }
+        }
+      },
+      "GAME10": {
+        "GID": "10636929",
+        "GIDM": "1540988",
+        "MS": "",
+        "IS_MASTER": "N",
+        "TEAM_H": "华盛顿奇才",
+        "TEAM_C": "多伦多猛龙",
+        "STRONG": "C",
+        "GOPEN": "N",
+        "PLAYS": {
+          "R": {
+            "SW_R": "Y",
+            "RATIO_R": "",
+            "IOR_RH": "0",
+            "IOR_RC": "0"
+          },
+          "OU": {
+            "SW_OU": "Y",
+            "RATIO_OUO": "",
+            "RATIO_OUU": "",
+            "IOR_OUH": "0",
+            "IOR_OUC": "0"
+          },
+          "M": {
+            "SW_M": "N",
+            "IOR_MH": "0",
+            "IOR_MC": "0"
+          }
+        }
+      },
+      "GAME11": {
+        "GID": "10636930",
+        "GIDM": "1540988",
+        "MS": "10636929_1",
+        "IS_MASTER": "N",
+        "TEAM_H": "华盛顿奇才",
+        "TEAM_C": "多伦多猛龙",
+        "STRONG": "H",
+        "GOPEN": "N",
+        "PLAYS": {
+          "R": {
+            "SW_R": "Y",
+            "RATIO_R": "",
+            "IOR_RH": "0",
+            "IOR_RC": "0"
+          },
+          "OU": {
+            "SW_OU": "Y",
+            "RATIO_OUO": "",
+            "RATIO_OUU": "",
+            "IOR_OUH": "0",
+            "IOR_OUC": "0"
+          },
+          "M": {
+            "SW_M": "N",
+            "IOR_MH": "0",
+            "IOR_MC": "0"
+          }
+        }
+      },
+      "GAME12": {
+        "GID": "10636931",
+        "GIDM": "1540988",
+        "MS": "10636929_2",
+        "IS_MASTER": "N",
+        "TEAM_H": "华盛顿奇才",
+        "TEAM_C": "多伦多猛龙",
+        "STRONG": "H",
+        "GOPEN": "N",
+        "PLAYS": {
+          "R": {
+            "SW_R": "Y",
+            "RATIO_R": "",
+            "IOR_RH": "0",
+            "IOR_RC": "0"
+          },
+          "OU": {
+            "SW_OU": "Y",
+            "RATIO_OUO": "",
+            "RATIO_OUU": "",
+            "IOR_OUH": "0",
+            "IOR_OUC": "0"
+          },
+          "M": {
+            "SW_M": "N",
+            "IOR_MH": "0",
+            "IOR_MC": "0"
+          }
+        }
+      },
+      "GAME1": {
+        "GID": "10636916",
+        "GIDM": "1540988",
+        "MS": "10636915_1",
+        "IS_MASTER": "N",
+        "TEAM_H": "华盛顿奇才",
+        "TEAM_C": "多伦多猛龙",
+        "STRONG": "H",
+        "GOPEN": "N",
+        "PLAYS": {
+          "R": {
+            "SW_R": "Y",
+            "RATIO_R": "",
+            "IOR_RH": "0",
+            "IOR_RC": "0"
+          },
+          "OU": {
+            "SW_OU": "Y",
+            "RATIO_OUO": "",
+            "RATIO_OUU": "",
+            "IOR_OUH": "0",
+            "IOR_OUC": "0"
+          },
+          "M": {
+            "SW_M": "N",
+            "IOR_MH": "0",
+            "IOR_MC": "0"
+          }
+        }
+      },
+      "GAME0": {
+        "GID": "10636915",
+        "GIDM": "1540988",
+        "MS": "",
+        "IS_MASTER": "Y",
+        "TEAM_H": "华盛顿奇才",
+        "TEAM_C": "多伦多猛龙",
+        "STRONG": "C",
+        "GOPEN": "Y",
+        "PLAYS": {
+          "R": {
+            "SW_R": "Y",
+            "RATIO_R": "4.5",
+            "IOR_RH": "0.970",
+            "IOR_RC": "0.890"
+          },
+          "OU": {
+            "SW_OU": "Y",
+            "RATIO_OUO": "236.5",
+            "RATIO_OUU": "236.5",
+            "IOR_OUH": "0.900",
+            "IOR_OUC": "0.940"
+          },
+          "M": {
+            "SW_M": "N",
+            "IOR_MH": "0",
+            "IOR_MC": "0"
+          }
+        }
+      }
+    }
+  }
+}

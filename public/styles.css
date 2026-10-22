@@ -24,10 +24,51 @@ body{background:radial-gradient(ellipse at 10% 0,#20302155,transparent 40%),var(
 @media(max-width:760px){.topbar{height:76px;gap:10px}.header-clock{display:none}.topbar .status-pill{margin-left:auto}.terminal-layout{grid-template-columns:minmax(0,1fr)}.market-list{padding:12px;gap:13px}.line-card-header{padding:14px 12px;flex-wrap:wrap;gap:12px}.line-description{flex:1}.line-quotes{width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.line-quote{min-width:0;max-width:none;gap:8px;padding:10px;min-height:46px}.line-quote strong{font-size:16px}.line-quote .outcome-name{font-size:11px}.line-hint{padding:0 12px 10px;font-size:10px}.line-chip{min-width:55px;font-size:12px;height:49px}.line-card .book-row{font-size:10px;gap:4px;grid-template-columns:.8fr 1fr 1fr 1.15fr}.line-card .book-table-heading{font-size:9px}.line-card .orderbook{padding-left:10px;padding-right:10px}.line-card .book-divider{margin-left:-10px;margin-right:-10px;padding:10px 15px}.line-card .book-panel .panel-heading{padding:0 13px}.line-card .book-selection,.line-card .book-summary{padding-left:13px;padding-right:13px}.line-card .book-selection h3{font-size:16px}.games-list{max-height:none}}
 .line-price-caption{display:block;margin-top:3px;color:#82909d!important;font-size:10px!important}
 
+/* 紧凑赛事摘要：先展示开赛时间，再展示缩小后的队徽与对阵。 */
+.match-heading{padding:14px 18px 12px}
+.match-date{margin:0 0 8px!important;font-size:11px!important;line-height:1.5}
+.matchup{grid-template-columns:minmax(0,1fr) 28px minmax(0,1fr);gap:10px;margin:0}
+.matchup-team{gap:6px}
+.team-badge.large{width:56px;height:56px;border-radius:16px;box-shadow:0 5px 18px #0002}
+.team-badge.large img{padding:5px}
+.team-badge.large .team-fallback{font-size:16px}
+.matchup-team strong{font-size:13px;line-height:1.5}
+
+.page-toolbar{min-height:54px;display:flex;align-items:center;justify-content:space-between;gap:16px;border-bottom:1px solid var(--line)}
+.page-title{font-size:16px;font-weight:600}
+.page-toolbar-actions{display:flex;align-items:center;justify-content:flex-end;gap:14px;color:var(--muted);font-size:11px}
+.page-toolbar-actions #crown-session-label[data-state="success"]{color:var(--bid)}.page-toolbar-actions #crown-session-label[data-state="error"]{color:var(--ask)}.page-toolbar-actions #crown-session-label[data-state="pending"]{color:#e6c379}
+.page-toolbar button,.login-actions button,.login-dialog-heading button{min-height:36px;padding:0 13px;border:1px solid #414a4b;border-radius:5px;background:#1d2526;color:var(--text);font-size:12px}
+.page-toolbar .button-primary,.login-actions .button-primary{border-color:#a9cb66;background:#c8f06e;color:#172014;font-weight:600}
+.login-actions .button-danger{border-color:#7c514b;color:#e6b0a4;background:#2a1e1d}
+.login-actions .button-quiet,.login-dialog-heading .button-quiet{background:transparent;color:#aab4b2}
+.page-toolbar button:disabled,.login-actions button:disabled{cursor:not-allowed;opacity:.5}
+.crown-login-dialog{width:min(520px,calc(100vw - 28px));max-height:min(82vh,560px);margin:auto;padding:0;border:1px solid #41494a;border-radius:8px;background:#171b1d;color:var(--text);box-shadow:0 24px 80px #0009}
+.crown-login-dialog::backdrop{background:#080a0bd9}
+.login-dialog-heading{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:18px 20px;border-bottom:1px solid var(--line)}
+.login-dialog-heading h2{margin:0;font-size:16px;font-weight:600}
+.login-status{min-height:48px;margin:0;padding:18px 20px;color:#abb6b2;font-size:12px;line-height:1.8}
+.login-status[data-state="success"]{color:#c8e69a}
+.login-status[data-state="error"]{color:#f0aa9d}
+.login-actions{display:flex;flex-wrap:wrap;gap:9px;padding:0 20px 20px}
+@media(max-width:760px){.page-toolbar{min-height:48px}.page-title{font-size:14px}.page-toolbar-actions{gap:8px;font-size:10px}.page-toolbar button,.login-actions button,.login-dialog-heading button{min-height:34px;padding:0 10px;font-size:11px}.login-dialog-heading{padding:14px}.login-status{padding:14px}.login-actions{padding:0 14px 14px}}
+.matchup-versus{font-size:11px}
+@media(max-width:760px){
+  .match-heading{padding:13px 15px 10px}
+  .team-badge.large{width:48px;height:48px;border-radius:14px}
+  .team-badge.large img{padding:4px}
+  .team-badge.large .team-fallback{font-size:14px}
+  .matchup{grid-template-columns:minmax(0,1fr) 24px minmax(0,1fr);gap:6px}
+  .matchup-team{gap:5px}
+  .matchup-team strong{font-size:12px}
+  .match-date{font-size:10px!important}
+}
+
 /* 默认收起深度，显式展开按钮与分值栏始终在卡片顶部。 */
 .book-disclosure{display:block;margin-top:10px;border:1px solid #394652;background:#252f39;color:#bcc9d8;border-radius:6px;padding:6px 10px;font:11px var(--font);cursor:pointer}.book-disclosure:hover,.book-disclosure.open{color:#c8f06e;border-color:#617442;background:#2b3526}.line-card:not(.expanded) .line-quote:hover{background:#2a3440}.line-card>.book-panel .panel-heading{position:relative;gap:12px}.depth-control{background:#18212a;color:#bdc8d2;border:1px solid #394653;border-radius:5px;padding:5px 8px;font-size:11px}.line-card .book-mode{margin-left:auto}.line-card .orderbook{max-height:420px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;overflow-anchor:none}.line-card .book-table-heading{position:sticky;top:0;background:#1d2329;z-index:2}.line-card .book-selection{padding-top:10px}.line-card .book-selection h3{font-size:15px;margin:5px 0}.line-card .book-selection p{display:none}.line-card .book-summary{padding-bottom:10px;gap:25px}.line-card .book-summary strong{font-size:15px}.line-card .book-summary>div{gap:4px}.line-card .book-footnote{padding:10px 16px}.line-card-header{padding-top:14px;padding-bottom:14px}.line-description h4{margin-bottom:4px}
 @media(max-width:760px){.book-disclosure{font-size:11px;padding:6px 9px;margin-top:8px}.line-card .orderbook{max-height:355px}.depth-control{font-size:10px;padding:5px}.line-card .book-mode{font-size:9px}.line-card .book-panel .panel-heading{gap:6px}.line-card-header{gap:10px}.line-card .book-footnote{font-size:9px}}
 
-.crown-panel{margin-top:24px}.crown-panel>.panel-heading{gap:16px}.crown-panel #crown-status{color:#cbbd86;font-size:12px}.crown-toolbar{display:flex;flex-wrap:wrap;gap:18px;padding:17px 20px}.crown-toolbar label{display:flex;gap:8px;align-items:center;font-size:12px;color:#a6b2af}.crown-toolbar select{max-width:280px;background:#1c252b;color:#dbe2dc;border:1px solid #3d4947;border-radius:5px;padding:7px;font:12px var(--font)}.crown-meta{font-size:11px;color:#99a7a3;padding:0 20px;line-height:1.9}.crown-content{padding:0 20px 20px;overflow:auto;max-height:950px;overflow-anchor:none}.crown-warning{padding:13px;border:1px solid #615233;color:#e5c28e;background:#302719;font-size:12px;line-height:1.8}.crown-disclaimer,.crown-empty{font-size:11px;line-height:1.9;color:#9caaa4}.crown-match-card{margin:15px 0;padding:15px;border:1px solid #37413f;border-radius:10px;background:#1b2428}.crown-match-card h3{font-size:15px;font-weight:500;margin:0}.crown-match-card .crown-meta{padding:0}.crown-coverage{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}.crown-coverage span{font-size:10px;border:1px solid #605b40;color:#cbb887;padding:6px;border-radius:5px}.crown-coverage .verified{color:#b4d787;border-color:#586d3a}.crown-table{overflow-x:auto}.crown-row{display:grid;grid-template-columns:1.1fr 1fr .9fr 1.2fr 1.5fr;gap:12px;min-width:710px;font-size:11px;line-height:1.8;padding:10px 6px;border-bottom:1px solid #34403e}.crown-row-heading{color:#95a69d}.crown-check-time{display:block;font-size:10px;color:#7e9588;padding:7px}.crown-history{font-size:11px;color:#9aafa2;padding:10px 0;line-height:1.9}.crown-history summary{cursor:pointer;color:#c5d4b3}.crown-history p{margin:7px 0}@media(max-width:760px){.crown-content{padding:0 12px 12px}.crown-toolbar{padding:14px 12px;gap:10px}.crown-toolbar select{max-width:230px}.crown-meta{padding:0 12px}.crown-match-card{padding:10px}.crown-match-card h3{font-size:13px}}
+.crown-water{flex-basis:100%;display:block;color:#a7b5a0;font-size:10px;line-height:1.35;letter-spacing:.1px}.crown-water.valid{color:#c8f06e}.crown-water.unavailable{color:#7f8b87}
+@media(max-width:760px){.crown-water{font-size:9px}}
+
 .crown-capture-review{margin:0 20px 20px;padding:12px;border:1px solid #4b4c39;border-radius:7px;color:#b8bd9d;font-size:12px;line-height:1.9}.crown-capture-review summary{cursor:pointer}.crown-capture-review p{overflow-wrap:anywhere}@media(max-width:760px){.crown-capture-review{margin:0 12px 12px;font-size:11px}}
-.line-quote .crown-inline-quote{display:block;flex-basis:100%;font-size:10px;color:#b7d4a3;line-height:1.6}

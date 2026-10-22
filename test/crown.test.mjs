@@ -143,3 +143,80 @@ test('an invented detail filter is rejected even when it points at an otherwise 
 test('non-finite scheduler values are rejected instead of overflowing timers into rapid requests',async t=>{
  const f=await configFixture(t);f.cfg.intervalMs='Infinity';await writeFile(f.path,JSON.stringify(f.cfg));await assert.rejects(loadConfig(f.path),/INVALID_CONFIG/);
 });
+
+function comparisonState() {
+ const outcomes=[{name:'Lakers',tokenId:'l'},{name:'Warriors',tokenId:'w'}];
+ return {mode:'live',events:[{id:'pol',title:'Lakers vs. Warriors',startTime:match().startTime,markets:[
+  ...[-3.5,3.5].map(line=>({id:`spread:${line}`,type:'spreads',question:`Spread: Lakers (${line})`,outcomes})),
+  {id:'total',type:'totals',question:'Lakers vs. Warriors: O/U 235.5',outcomes:[{name:'Over',tokenId:'o'},{name:'Under',tokenId:'u'}]},
+  {id:'winner',type:'moneyline',outcomes},
+ ]}],books:Object.fromEntries(['l','w','o','u'].map(id=>[id,{source:'live',asks:[{price:0.5}],bids:[{price:0.49}],verifiedAt:now()}]))};
+}
+const currentComparison = monitor => monitor.snapshot(comparisonState()).matches[0]?.comparison.markets ?? [];
+const hasValidQuote = markets => markets.some(market=>market.sides.some(side=>side.comparisonStatus==='comparable_quote'));
+
+test('a pending new detail poll keeps the previous fresh quotes while collected progress resets',async t=>{
+ const f=await configFixture(t);let pause=false,release,started;
+ const gate=new Promise(resolve=>{release=resolve;});const entered=new Promise(resolve=>{started=resolve;});
+ const fake={request:async(mode,profile,args)=>{if(args.gid&&pause){pause=false;started();await gate;}return JSON.stringify(args.gid?payload():{response:{more:'no',games:[matchRaw()]}});},cancel(){release();}};
+ const monitor=new CrownMonitor({configPath:f.path,store:new CrownStore(),clientFactory:()=>fake});monitor.running=true;t.after(()=>monitor.stop());
+ await monitor.cycle();assert.equal(hasValidQuote(currentComparison(monitor)),true);
+ pause=true;const pending=monitor.cycle();await entered;
+ try {assert.equal(monitor.state.collectedIds.length,0);assert.equal(hasValidQuote(currentComparison(monitor)),true);} finally {release();await pending;}
+ assert.equal(monitor.state.collectedIds.length,1);assert.equal(hasValidQuote(currentComparison(monitor)),true);
+});
+
+test('a successful new response removes absent quote keys immediately without deleting history',async t=>{
+ const f=await configFixture(t);let response=payload();
+ const fake={request:async(mode,profile,args)=>JSON.stringify(args.gid?response:{response:{more:'no',games:[matchRaw()]}}),cancel(){}};
+ const store=new CrownStore();const monitor=new CrownMonitor({configPath:f.path,store,clientFactory:()=>fake});monitor.running=true;t.after(()=>monitor.stop());
+ await monitor.cycle();const total=store.markets('100').find(market=>market.type==='totals');
+ assert.ok(currentComparison(monitor).some(market=>market.type==='totals'));
+ response=payload();response.response.totals=[];await monitor.cycle();
+ assert.equal(currentComparison(monitor).some(market=>market.type==='totals'),false);
+ assert.equal(store.markets('100').find(market=>market.key===total.key).checkedAt,total.checkedAt);
+ assert.ok(store.history('100').some(market=>market.key===total.key));
+ response={response:{totals:[],spreads:[],moneyline:[]}};await monitor.cycle();
+ assert.deepEqual(currentComparison(monitor),[]);assert.equal(store.markets('100').length,3);assert.ok(store.history('100').length>=3);
+});
+
+test('a spread direction change cannot leave both the previous and new signed lines comparable',async t=>{
+ const f=await configFixture(t);let response=payload();
+ const fake={request:async(mode,profile,args)=>JSON.stringify(args.gid?response:{response:{more:'no',games:[matchRaw()]}}),cancel(){}};
+ const store=new CrownStore();const monitor=new CrownMonitor({configPath:f.path,store,clientFactory:()=>fake});monitor.running=true;t.after(()=>monitor.stop());
+ await monitor.cycle();assert.deepEqual(currentComparison(monitor).filter(m=>m.type==='spreads').map(m=>m.line),[3.5]);
+ response=payload();response.response.spreads[0].line='3.5';await monitor.cycle();
+ const spreads=currentComparison(monitor).filter(m=>m.type==='spreads');assert.deepEqual(spreads.map(m=>m.line),[-3.5]);assert.equal(hasValidQuote(spreads),true);
+ assert.deepEqual(store.markets('100').filter(m=>m.type==='spreads').map(m=>m.line).sort((a,b)=>a-b),[-3.5,3.5]);
+ assert.ok(store.history('100').some(m=>m.type==='spreads'&&m.line===3.5));
+});
+
+test('a failed detail profile disables previous quotes until every required profile succeeds again',async t=>{
+ const f=await configFixture(t);const {CrownError}=await import('../src/crown/parser.mjs');let fail=false;
+ const fake={request:async(mode,profile,args)=>{if(args.gid&&mode==='early'&&fail)throw new CrownError('ACCESS_OR_SESSION_DENIED');return JSON.stringify(args.gid?payload():{response:{more:'no',games:[matchRaw()]}});},cancel(){}};
+ const monitor=new CrownMonitor({configPath:f.path,store:new CrownStore(),clientFactory:()=>fake});monitor.running=true;t.after(()=>monitor.stop());
+ await monitor.cycle();assert.equal(hasValidQuote(currentComparison(monitor)),true);
+ fail=true;await monitor.cycle();assert.equal(hasValidQuote(currentComparison(monitor)),false);assert.equal(monitor.state.collectedIds.length,0);
+ fail=false;await monitor.cycle();assert.equal(hasValidQuote(currentComparison(monitor)),true);
+ monitor.state.status='blocked';assert.equal(hasValidQuote(currentComparison(monitor)),false);
+});
+
+test('list failures and conflicting identities disable old quotes retained for historical inspection',async t=>{
+ const f=await configFixture(t);const {CrownError}=await import('../src/crown/parser.mjs');let mode='success';
+ const fake={request:async(source,profile,args)=>{
+  if(!args.gid&&mode==='failure')throw new CrownError('ACCESS_OR_SESSION_DENIED');
+  const games=mode==='conflict'?[matchRaw(),matchRaw({home:'丹佛掘金'})]:[matchRaw()];
+  return JSON.stringify(args.gid?payload():{response:{more:'no',games}});
+ },cancel(){}};
+ const store=new CrownStore();const monitor=new CrownMonitor({configPath:f.path,store,clientFactory:()=>fake});monitor.running=true;t.after(()=>monitor.stop());
+ await monitor.cycle();assert.equal(hasValidQuote(currentComparison(monitor)),true);
+ mode='failure';await monitor.cycle();assert.equal(hasValidQuote(currentComparison(monitor)),false);assert.equal(store.markets('100').length,3);
+ mode='success';await monitor.cycle();assert.equal(hasValidQuote(currentComparison(monitor)),true);
+ mode='conflict';await monitor.cycle();assert.equal(hasValidQuote(currentComparison(monitor)),false);assert.ok(monitor.state.failedIds.includes('100'));
+});
+
+test('a new monitor does not treat persisted quotes as validated before a new collection',t=>{
+ const store=new CrownStore();store.upsertMatch(match());for(const market of parseMarkets(payload(),detail,match(),'today').markets)store.saveMarket(market);store.setMeta('activeIds',['100']);
+ const monitor=new CrownMonitor({store});t.after(()=>monitor.stop());
+ assert.deepEqual(currentComparison(monitor),[]);assert.equal(store.markets('100').length,3);assert.equal(store.history('100').length,3);
+});

@@ -10,21 +10,11 @@
 </head>
 <body>
   <div class="app-shell">
-    <header class="topbar">
-      <a class="brand" href="/" aria-label="篮场首页"><span class="brand-mark">◉</span><span>篮场<span class="brand-sub">实时盘口监控</span></span></a>
-      <nav class="topnav"><span class="nav-active">美职篮市场</span><span>预测市场</span></nav>
-      <div class="header-clock"><span id="mode-label">只读行情</span><strong id="clock">—</strong><span id="timezone-label">北京时间</span></div>
-      <div class="status-pill" id="connection"><i></i><span>正在连接</span></div>
-    </header>
-
     <main>
-      <section class="toolbar" aria-label="筛选条件">
-        <div class="range-control" role="group" aria-label="比赛时间范围"><button data-range="upcoming" class="active">今天起 3 天</button><button data-range="past">过去 3 天</button><button data-range="both">前后各 2 天</button></div>
-        <div class="toolbar-end"><span class="update-label" id="update-label">等待行情</span><label class="select-label"><span>时区</span><select id="timezone" aria-label="比赛时区"><option value="Asia/Shanghai">北京时间</option><option value="America/New_York">美国东部</option><option value="UTC">协调世界时</option></select></label></div>
-      </section>
-
-      <div class="notice hidden" id="notice" role="status"></div>
-
+      <div class="page-toolbar">
+        <span class="page-title">篮场</span>
+        <div class="page-toolbar-actions"><span id="crown-session-label" role="status">皇冠会话未保存</span><button id="crown-login-open" class="button-primary" type="button">皇冠配置</button></div>
+      </div>
       <section class="stats" aria-label="市场概况">
         <div class="stat"><span>监控比赛</span><strong id="stat-events">00</strong><small id="date-range">按所选时区筛选</small></div>
         <div class="stat"><span>市场盘口</span><strong id="stat-markets">00</strong><small>胜负 · 让分 · 大小分</small></div>
@@ -32,24 +22,30 @@
         <div class="stat"><span>挂单总额</span><strong id="stat-depth">—</strong><small>当前结果 · 美元名义金额</small></div>
       </section>
 
+      <div class="notice hidden" id="notice" role="status"></div>
+
       <div class="terminal-layout">
         <aside class="games-panel panel"><div class="panel-heading"><h2>比赛列表</h2><span class="mono" id="game-count">0 场比赛</span></div><div id="games" class="games-list"></div><div class="panel-footnote">时间按所选时区显示<br>赛程每分钟自动刷新</div></aside>
 
-        <section class="market-panel panel"><div class="panel-heading"><h2>市场盘口</h2><a id="market-link" class="external-link hidden" target="_blank" rel="noopener noreferrer">查看市场 ↗</a></div><div id="match-heading" class="match-heading"></div><div id="market-types" class="market-types" role="group" aria-label="盘口类型"></div><div id="markets" class="market-list"></div></section>
+        <section class="market-panel panel"><div class="panel-heading"><h2>市场盘口</h2><a id="market-link" class="external-link hidden" target="_blank" rel="noopener noreferrer">查看市场 ↗</a></div><div id="match-heading" class="match-heading"></div><div id="markets" class="market-list"></div></section>
 
         <section class="book-panel panel"><div class="panel-heading"><h2>订单簿</h2><span class="book-mode" id="book-mode">实时买卖挂单</span></div><div id="book-selection" class="book-selection"></div><div id="book-summary" class="book-summary"></div><div id="book" class="orderbook"></div><div class="panel-footnote book-footnote" id="book-footnote">选择一个市场结果以查看深度</div></section>
       </div>
 
-      <section class="panel crown-panel" id="crown-panel" aria-label="皇冠与预测市场水位比较">
-        <div class="panel-heading"><h2>皇冠 · 跨平台盘口比较</h2><span id="crown-status">等待采集状态</span></div>
-        <div class="crown-toolbar"><label>来源<select id="crown-source"><option value="">今日与早盘</option><option value="today">今日</option><option value="early">早盘</option></select></label><label>盘口<select id="crown-type"><option value="">全部全场盘口</option><option value="moneyline">独赢</option><option value="spreads">让分</option><option value="totals">大小分</option></select></label><label>比赛<select id="crown-match"><option value="">全部比赛</option></select></label></div>
-        <p id="crown-summary" class="crown-meta"></p><div id="crown-content" class="crown-content"></div><details id="crown-captures" class="crown-capture-review"><summary>历史响应样本核对（非实时，不参与价差计算）</summary><div id="crown-capture-content">尚未读取本机样本报告</div></details>
-      </section>
-
       <footer><span><span class="footer-dot"></span> 只读监控 · 不提交订单</span><span>价格单位为美分 · 数量单位为份 · 每份结算价值最高 1 美元</span><span>数据来源：预测市场官方接口</span></footer>
     </main>
   </div>
+  <dialog id="crown-login-dialog" class="crown-login-dialog" aria-labelledby="crown-login-title">
+    <div class="login-dialog-heading"><h2 id="crown-login-title">皇冠账号配置</h2><button id="crown-login-close" class="button-quiet" type="button" aria-label="关闭">关闭</button></div>
+    <p id="crown-login-status" class="login-status" role="status" aria-live="polite">正在读取本机会话状态</p>
+    <div class="login-actions">
+      <button id="crown-login-window-start" class="button-primary" type="button">打开皇冠登录窗口</button>
+      <button id="crown-login-verify" type="button" disabled>验证并保存会话</button>
+      <button id="crown-login-cancel" class="button-quiet" type="button" hidden>关闭登录窗口</button>
+      <button id="crown-login-clear" class="button-danger" type="button" disabled>清除已保存会话</button>
+    </div>
+  </dialog>
   <script type="module" src="/app.js"></script>
-  <script type="module" src="/crown.js"></script>
+  <script type="module" src="/crown-login.js"></script>
 </body>
 </html>

@@ -20,7 +20,7 @@ export async function verifyEvidence(evidence, base) {
 export async function loadConfig(filename) {
   const path = resolve(filename), base = dirname(path);
   const config = await readJson(path);
-  if (config.endpoint !== ENDPOINT || !config.sessionFile) throw new CrownError('INVALID_CONFIG');
+  if (config.endpoint !== ENDPOINT || (config.sessionFile != null && (typeof config.sessionFile !== 'string' || !config.sessionFile))) throw new CrownError('INVALID_CONFIG');
   const profiles = [config.lists?.today, config.lists?.early, ...(config.details?.today ?? []), ...(config.details?.early ?? [])];
   if (profiles.slice(0, 2).some(p => !p) || !config.details?.today?.length || !config.details?.early?.length) throw new CrownError('MAPPING_UNVERIFIED');
   for (const profile of profiles) {
@@ -45,6 +45,21 @@ export async function loadConfig(filename) {
       for (const m of profile.markets) {
         m.fullGamePathVerified = false;
         if (!m.matchIdPath || !m.statusPath || !m.statusValues || !m.odds) throw new CrownError('INVALID_MAPPING');
+        const pathValue = value => typeof value === 'string' && value.trim().length > 0;
+        const valueMap = (value, allowed) => value && typeof value === 'object' && !Array.isArray(value)
+          && Object.keys(value).length > 0 && Object.values(value).every(item => allowed.includes(item));
+        if (!['totals', 'spreads', 'moneyline'].includes(m.type) || !pathValue(m.recordsPath)
+          || (m.matchReference !== undefined && !['id', 'familyId'].includes(m.matchReference))) throw new CrownError('INVALID_MAPPING');
+        if (m.type !== 'moneyline' && !pathValue(m.linePath)) throw new CrownError('INVALID_MAPPING');
+        if (m.rowStatusPath !== undefined || m.rowStatusValues !== undefined) {
+          if (!pathValue(m.rowStatusPath) || !valueMap(m.rowStatusValues, ['open', 'closed', 'suspended', 'unknown'])) throw new CrownError('INVALID_MAPPING');
+        }
+        if (m.favoritePath !== undefined || m.favoriteValues !== undefined) {
+          if (m.type !== 'spreads' || !pathValue(m.favoritePath) || !valueMap(m.favoriteValues, ['home', 'away'])
+            || m.lineReference !== undefined) throw new CrownError('INVALID_MAPPING');
+        } else if (m.type === 'spreads' && !['home', 'away'].includes(m.lineReference)) throw new CrownError('DIRECTION_UNVERIFIED');
+        if (m.oppositeLinePath !== undefined && (m.type !== 'totals' || !pathValue(m.oppositeLinePath))) throw new CrownError('INVALID_MAPPING');
+        if (m.skipEmptyLine !== undefined && (typeof m.skipEmptyLine !== 'boolean' || m.type === 'moneyline')) throw new CrownError('INVALID_MAPPING');
         if (!m.phasePath || m.fullGameValue == null) {
           if (m.phase !== 'full') throw new CrownError('INVALID_MAPPING');
           await verifyEvidence(m.phaseEvidence, base); m.fullGamePathVerified = true;
@@ -52,13 +67,21 @@ export async function loadConfig(filename) {
       }
     }
   }
-  if (![config.intervalMs ?? 30000, config.requestGapMs ?? 1000, config.timeoutMs ?? 15000].every(value => Number.isFinite(Number(value)) && Number(value) > 0)) throw new CrownError('INVALID_CONFIG');
+  if (![config.intervalMs ?? 10000, config.requestGapMs ?? 500, config.timeoutMs ?? 15000].every(value => Number.isFinite(Number(value)) && Number(value) > 0)) throw new CrownError('INVALID_CONFIG');
   if (config.timestamp?.reviewed && !['seconds','milliseconds'].includes(config.timestamp.unit)) throw new CrownError('INVALID_CONFIG');
-  const intervalMs = Math.min(86400000, Math.max(10000, Number(config.intervalMs) || 30000));
-  const requestGapMs = Math.max(500, Number(config.requestGapMs) || 1000);
-  return { ...config, intervalMs, requestGapMs, timeoutMs: Math.min(60000, Math.max(1000, Number(config.timeoutMs) || 15000)), sessionFile: resolve(base, config.sessionFile), base };
+  const intervalMs = Math.min(86400000, Math.max(10000, Number(config.intervalMs) || 10000));
+  const requestGapMs = Math.max(500, Number(config.requestGapMs) || 500);
+  return { ...config, intervalMs, requestGapMs, timeoutMs: Math.min(60000, Math.max(1000, Number(config.timeoutMs) || 15000)), sessionFile: config.sessionFile ? resolve(base, config.sessionFile) : null, base };
 }
-export async function loadSession(path) {
+export async function loadSession(path = null) {
+  if (!path) {
+    const { CrownSessionStore, sessionCookieHeader } = await import('./login.mjs');
+    let stored;
+    try { stored = await new CrownSessionStore().load(); } catch { throw new CrownError('SESSION_MISSING'); }
+    if (!stored || stored.member_origin !== new URL(ENDPOINT).origin || stored.member_protocol?.origin !== new URL(ENDPOINT).origin) throw new CrownError('SESSION_MISSING');
+    const cookie = sessionCookieHeader(stored.storage_state, stored.member_origin);
+    return { params: { uid: stored.uid, ver: stored.member_protocol.ver, langx: stored.member_protocol.langx }, cookie };
+  }
   let info;
   try { info = await stat(path); } catch { throw new CrownError('SESSION_MISSING'); }
   if (process.platform !== 'win32' && (info.mode & 0o077)) throw new CrownError('SESSION_PERMISSIONS');

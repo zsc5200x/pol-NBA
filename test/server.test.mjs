@@ -4,9 +4,9 @@ import { once } from 'node:events';
 import { Monitor } from '../src/monitor.mjs';
 import { createApp } from '../server.mjs';
 
-async function demoApp(t) {
+async function demoApp(t, options = {}) {
   const monitor = new Monitor({ demo: true });
-  const app = createApp({ monitor });
+  const app = createApp({ monitor, ...options });
   monitor.start();
   app.server.listen(0, '127.0.0.1');
   await once(app.server, 'listening');
@@ -28,6 +28,7 @@ test('demo HTTP state is explicitly synthetic and serves health plus dashboard a
   assert.equal(stateResponse.headers.get('cache-control'), 'no-store');
   const state = await stateResponse.json();
   assert.equal(state.mode, 'demo');
+  assert.equal(state.crown.status, 'not_configured', 'the dashboard state keeps Crown collection separate from the Polymarket status');
   assert.ok(state.events.length > 0);
   assert.ok(Object.keys(state.books).length > 0);
   assert.ok(Object.values(state.books).every(book => book.source === 'demo'));
@@ -35,7 +36,7 @@ test('demo HTTP state is explicitly synthetic and serves health plus dashboard a
   assert.equal(health.server, 'ok');
   assert.equal(health.mode, 'demo');
   assert.equal(health.events, state.events.length);
-  for (const [path, mime] of [['/', 'text/html'], ['/app.js', 'text/javascript'], ['/chinese.js', 'text/javascript'], ['/market-lines.js', 'text/javascript'], ['/styles.css', 'text/css'], ['/logos/lal.svg', 'image/svg+xml']]) {
+  for (const [path, mime] of [['/', 'text/html'], ['/app.js', 'text/javascript'], ['/chinese.js', 'text/javascript'], ['/market-lines.js', 'text/javascript'], ['/crown-login.js', 'text/javascript'], ['/styles.css', 'text/css'], ['/logos/lal.svg', 'image/svg+xml']]) {
     const response = await fetch(`${app.base}${path}`);
     assert.equal(response.status, 200, `${path} should be available`);
     assert.ok(response.headers.get('content-type').startsWith(mime));
@@ -44,6 +45,10 @@ test('demo HTTP state is explicitly synthetic and serves health plus dashboard a
     assert.ok((await response.text()).length > 20);
   }
   assert.equal((await fetch(`${app.base}/package.json`)).status, 404, 'source files must not be served');
+  assert.equal((await fetch(`${app.base}/crown.js`)).status, 404, 'the removed comparison page script must not be served');
+  const html = await (await fetch(app.base)).text();
+  assert.doesNotMatch(html, /皇冠 · 跨平台盘口比较|8768\/me/);
+  assert.match(html, /crown-login-dialog/);
   assert.equal((await fetch(`${app.base}/unknown`)).status, 404);
   assert.equal((await fetch(`${app.base}/logos/zzz.svg`)).status, 404);
   assert.equal((await fetch(`${app.base}/logos/NOTICE.md`)).status, 404);
@@ -72,6 +77,7 @@ test('SSE immediately sends an identifiable state snapshot and subsequent monito
   }
   const initial = await nextState();
   assert.equal(initial.mode, 'demo');
+  assert.equal(initial.crown.status, 'not_configured');
   app.monitor.setSettings({ range: 'past' });
   const updated = await nextState();
   assert.equal(updated.range, 'past');
@@ -96,4 +102,37 @@ test('settings accepts supported same-origin values and validates all input shap
   assert.equal((await send(JSON.stringify({ range: 'past' }), { 'content-type': 'application/json', origin: 'https://untrusted.example' })).status, 403);
   assert.equal(app.monitor.snapshot().range, 'both', 'rejected writes do not change settings');
   assert.equal((await send(JSON.stringify({ range: 'x'.repeat(5000) }))).status, 413);
+});
+
+test('standalone Crown login routes are local-only and never link to HD', async t => {
+  let calls = 0;
+  let monitoringStarted = false;
+  const service = {
+    startMonitoring: () => { monitoringStarted = true; },
+    status: async () => ({ stage: 'idle', message: '', browserOpen: false, canVerify: false, hasSession: false, lastSavedAt: null }),
+    start: async () => { calls++; return { stage: 'waiting', message: '请在新窗口登录。', browserOpen: true, canVerify: false, hasSession: false, lastSavedAt: null }; },
+    verifyAndSave: async () => ({ stage: 'saved', message: '会话已加密保存。', browserOpen: false, canVerify: true, hasSession: true, lastSavedAt: '2026-10-22T10:00:00.000Z' }),
+    cancel: async () => ({ stage: 'idle', message: '', browserOpen: false, canVerify: false, hasSession: false, lastSavedAt: null }),
+    clear: async () => ({ stage: 'idle', message: '', browserOpen: false, canVerify: false, hasSession: false, lastSavedAt: null }),
+    close: async () => {},
+  };
+  const app = await demoApp(t, { crownLogin: service });
+  assert.equal(monitoringStarted, true, 'the local heartbeat monitor starts with the HTTP server');
+
+  const stateResponse = await fetch(`${app.base}/api/crown/login/status`, { headers: { origin: app.base } });
+  assert.equal(stateResponse.status, 200);
+  assert.deepEqual(await stateResponse.json(), await service.status());
+  const start = await fetch(`${app.base}/api/crown/login/start`, { method: 'POST', headers: { origin: app.base, 'content-type': 'application/json' }, body: '{}' });
+  assert.equal(start.status, 200);
+  assert.equal((await start.json()).browserOpen, true);
+  assert.equal(calls, 1);
+
+  const denied = await fetch(`${app.base}/api/crown/login/start`, { method: 'POST', headers: { origin: 'https://untrusted.example', 'content-type': 'application/json' }, body: '{}' });
+  assert.equal(denied.status, 403);
+  const rebindingHost = new URL(app.base);
+  const rebinding = await fetch(`${app.base}/api/crown/login/status`, { headers: { host: `attacker.example:${rebindingHost.port}`, origin: `http://attacker.example:${rebindingHost.port}` } });
+  assert.equal(rebinding.status, 403, 'DNS-rebinding hostnames must not read local session status');
+  const missingOrigin = await fetch(`${app.base}/api/crown/login/start`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+  assert.equal(missingOrigin.status, 403, 'login writes require a same-origin browser request');
+  assert.equal(calls, 1, 'rejected origins must not launch a browser');
 });

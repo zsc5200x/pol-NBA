@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import { EventEmitter } from 'node:events';
 import { CrownStore } from './store.mjs';
 import { CrownClient } from './client.mjs';
 import { loadConfig, readJson, verifyEvidence } from './config.mjs';
@@ -18,9 +19,12 @@ export const ERRORS = {
 };
 const safeCode = e => Object.hasOwn(ERRORS, e?.code) ? e.code : 'INTERNAL_ERROR';
 
-export class CrownMonitor {
+export class CrownMonitor extends EventEmitter {
   constructor({ configPath = process.env.CROWN_CONFIG_PATH, dbPath = process.env.CROWN_DB_PATH ?? resolve('.local/crown.sqlite'), store, clientFactory = c => new CrownClient(c) } = {}) {
+    super();
     this.configPath = configPath; this.store = store ?? new CrownStore(configPath ? dbPath : ':memory:'); this.clientFactory = clientFactory; this.running = false; this.failureCount = 0;
+    // Poll progress is separate from the last validated quote set; a restart must revalidate it.
+    this.lastDetailState = new Map();
     this.state = { status: configPath ? 'starting' : 'not_configured', errorCode: configPath ? null : 'NOT_CONFIGURED', lastAttemptAt: null, lastSuccessAt: this.store.meta('lastSuccessAt'), discoveryComplete: false, todayIds: [], earlyIds: [], failedIds: [], collectedIds: [], coverage: {}, activeIds: this.store.meta('activeIds') ?? [], mappingVerified: false };
   }
   start() { if (this.running) return; this.running = true; if (this.configPath) void this.cycle(); }
@@ -44,6 +48,7 @@ export class CrownMonitor {
     if (this.pending || !this.running) return this.pending;
     this.pending = this.runCycle().finally(() => {
       this.pending = null;
+      this.emit('state', this.state);
       if (this.running) this.timer = setTimeout(() => void this.cycle(), Math.min(300000, (this.config?.intervalMs ?? 30000) * 2 ** Math.min(this.failureCount, 4)));
     });
     return this.pending;
@@ -77,6 +82,7 @@ export class CrownMonitor {
       }
       for (const id of conflictIds) all.delete(id);
       if (conflictIds.size) modeErrors.push('CONFLICTING_MATCH');
+      for (const [id, detailState] of this.lastDetailState) if (!all.has(id)) this.lastDetailState.set(id, { ...detailState, healthy: false });
       this.state.todayIds = [...modeIds.today]; this.state.earlyIds = [...modeIds.early]; this.state.discoveryComplete = complete;
       this.state.failedIds = [...conflictIds]; this.state.collectedIds = []; this.state.coverage = {};
       const previousIds = this.state.activeIds;
@@ -103,6 +109,7 @@ export class CrownMonitor {
           } catch (error) { detailsComplete = false; this.state.failedIds.push(match.id); this.state.errorCode = safeCode(error); }
         }
         this.store.transaction(() => { for (const market of markets.values()) this.store.saveMarket(market); });
+        this.lastDetailState.set(match.id, { healthy: detailsComplete, marketKeys: detailsComplete ? new Set(markets.keys()) : this.lastDetailState.get(match.id)?.marketKeys ?? new Set() });
         // Missing markets remain last-known data, never fabricated closed; their check time is not advanced.
         const observation = coverageDocument?.matches?.[match.id];
         const sameIdentity = observation && observation.home === match.home && observation.away === match.away && observation.startTime === match.startTime;
@@ -129,8 +136,12 @@ export class CrownMonitor {
   }
   snapshot(polState, filters = {}) {
     const allMatches = this.store.matches().filter(match => this.state.activeIds.includes(match.id));
-    const options = match => ({ collectionHealthy: this.state.collectedIds.includes(match.id) && this.state.status !== 'blocked', teamAliases: this.config?.teamAliases, staleMs: this.config ? Math.max(90000, this.config.intervalMs * 3) : 90000 });
-    const comparisons = new Map(allMatches.map(match => [match.id, compareMarkets(match, this.store.markets(match.id), polState, options(match))]));
+    const options = match => ({ collectionHealthy: this.lastDetailState.get(match.id)?.healthy === true && this.state.status !== 'blocked', teamAliases: this.config?.teamAliases, staleMs: this.config ? Math.max(90000, this.config.intervalMs * 3) : 90000 });
+    const comparisons = new Map(allMatches.map(match => {
+      const keys = this.lastDetailState.get(match.id)?.marketKeys;
+      const currentMarkets = this.store.markets(match.id).filter(market => keys?.has(market.key));
+      return [match.id, compareMarkets(match, currentMarkets, polState, options(match))];
+    }));
     const polCounts = new Map();
     for (const comparison of comparisons.values()) if (comparison.status === 'matched') polCounts.set(comparison.polEventId, (polCounts.get(comparison.polEventId) ?? 0) + 1);
     for (const [id, comparison] of comparisons) if ((polCounts.get(comparison.polEventId) ?? 0) > 1) comparisons.set(id, { status:'ambiguous', reason:'多个皇冠比赛指向同一预测市场事件，需人工核对', markets:[] });

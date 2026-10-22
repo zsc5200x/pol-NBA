@@ -1,8 +1,7 @@
 {
   "endpoint": "https://m321.mos077.com/transform.php",
-  "sessionFile": "./session.json",
-  "intervalMs": 30000,
-  "requestGapMs": 1000,
+  "intervalMs": 10000,
+  "requestGapMs": 500,
   "timeoutMs": 15000,
   "timestamp": {
     "reviewed": false,
@@ -104,19 +103,198 @@
           "sha256": null,
           "reviewedAt": null
         },
-        "containerPath": null,
+        "containerPath": "response.GAMES",
         "params": {
           "filter": "Main",
           "showtype": "today"
         },
-        "markets": [],
         "requestEvidence": {
           "path": null,
           "sha256": null,
           "reviewedAt": null
-        }
+        },
+        "markets": [
+          {
+            "type": "spreads",
+            "recordsPath": "response.GAMES.*",
+            "matchIdPath": "GIDM",
+            "phasePath": "MS",
+            "fullGameValue": "",
+            "linePath": "PLAYS.R.RATIO_R",
+            "odds": {
+              "home": "PLAYS.R.IOR_RH",
+              "away": "PLAYS.R.IOR_RC"
+            },
+            "oddsFormat": "hongkong",
+            "statusPath": "PLAYS.R.SW_R",
+            "statusValues": {
+              "Y": "open",
+              "N": "closed"
+            },
+            "rowStatusPath": "GOPEN",
+            "rowStatusValues": {
+              "Y": "open",
+              "N": "closed"
+            },
+            "matchReference": "familyId",
+            "skipEmptyLine": true,
+            "favoritePath": "STRONG",
+            "favoriteValues": {
+              "H": "home",
+              "C": "away"
+            }
+          },
+          {
+            "type": "totals",
+            "recordsPath": "response.GAMES.*",
+            "matchIdPath": "GIDM",
+            "phasePath": "MS",
+            "fullGameValue": "",
+            "linePath": "PLAYS.OU.RATIO_OUO",
+            "odds": {
+              "over": "PLAYS.OU.IOR_OUC",
+              "under": "PLAYS.OU.IOR_OUH"
+            },
+            "oddsFormat": "hongkong",
+            "statusPath": "PLAYS.OU.SW_OU",
+            "statusValues": {
+              "Y": "open",
+              "N": "closed"
+            },
+            "rowStatusPath": "GOPEN",
+            "rowStatusValues": {
+              "Y": "open",
+              "N": "closed"
+            },
+            "matchReference": "familyId",
+            "skipEmptyLine": true,
+            "oppositeLinePath": "PLAYS.OU.RATIO_OUU"
+          },
+          {
+            "type": "moneyline",
+            "recordsPath": "response.GAMES.*",
+            "matchIdPath": "GID",
+            "phasePath": "IS_MASTER",
+            "fullGameValue": "Y",
+            "odds": {
+              "home": "PLAYS.M.IOR_MH",
+              "away": "PLAYS.M.IOR_MC"
+            },
+            "oddsFormat": "decimal",
+            "statusPath": "PLAYS.M.SW_M",
+            "statusValues": {
+              "Y": "open",
+              "N": "closed"
+            },
+            "rowStatusPath": "GOPEN",
+            "rowStatusValues": {
+              "Y": "open",
+              "N": "closed"
+            }
+          }
+        ]
       }
     ],
-    "early": []
+    "early": [
+      {
+        "id": "main",
+        "reviewed": false,
+        "evidence": {
+          "path": null,
+          "sha256": null,
+          "reviewedAt": null
+        },
+        "containerPath": "response.GAMES",
+        "params": {
+          "filter": "Main",
+          "showtype": "early"
+        },
+        "requestEvidence": {
+          "path": null,
+          "sha256": null,
+          "reviewedAt": null
+        },
+        "markets": [
+          {
+            "type": "spreads",
+            "recordsPath": "response.GAMES.*",
+            "matchIdPath": "GIDM",
+            "phasePath": "MS",
+            "fullGameValue": "",
+            "linePath": "PLAYS.R.RATIO_R",
+            "odds": {
+              "home": "PLAYS.R.IOR_RH",
+              "away": "PLAYS.R.IOR_RC"
+            },
+            "oddsFormat": "hongkong",
+            "statusPath": "PLAYS.R.SW_R",
+            "statusValues": {
+              "Y": "open",
+              "N": "closed"
+            },
+            "rowStatusPath": "GOPEN",
+            "rowStatusValues": {
+              "Y": "open",
+              "N": "closed"
+            },
+            "matchReference": "familyId",
+            "skipEmptyLine": true,
+            "favoritePath": "STRONG",
+            "favoriteValues": {
+              "H": "home",
+              "C": "away"
+            }
+          },
+          {
+            "type": "totals",
+            "recordsPath": "response.GAMES.*",
+            "matchIdPath": "GIDM",
+            "phasePath": "MS",
+            "fullGameValue": "",
+            "linePath": "PLAYS.OU.RATIO_OUO",
+            "odds": {
+              "over": "PLAYS.OU.IOR_OUC",
+              "under": "PLAYS.OU.IOR_OUH"
+            },
+            "oddsFormat": "hongkong",
+            "statusPath": "PLAYS.OU.SW_OU",
+            "statusValues": {
+              "Y": "open",
+              "N": "closed"
+            },
+            "rowStatusPath": "GOPEN",
+            "rowStatusValues": {
+              "Y": "open",
+              "N": "closed"
+            },
+            "matchReference": "familyId",
+            "skipEmptyLine": true,
+            "oppositeLinePath": "PLAYS.OU.RATIO_OUU"
+          },
+          {
+            "type": "moneyline",
+            "recordsPath": "response.GAMES.*",
+            "matchIdPath": "GID",
+            "phasePath": "IS_MASTER",
+            "fullGameValue": "Y",
+            "odds": {
+              "home": "PLAYS.M.IOR_MH",
+              "away": "PLAYS.M.IOR_MC"
+            },
+            "oddsFormat": "decimal",
+            "statusPath": "PLAYS.M.SW_M",
+            "statusValues": {
+              "Y": "open",
+              "N": "closed"
+            },
+            "rowStatusPath": "GOPEN",
+            "rowStatusValues": {
+              "Y": "open",
+              "N": "closed"
+            }
+          }
+        ]
+      }
+    ]
   }
 }

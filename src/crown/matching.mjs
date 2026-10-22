@@ -61,5 +61,5 @@ export function compareMarkets(match, crownMarkets, polState, options = {}) {
           comparisonStatus: !outcome ? 'outcome_unmatched' : !crownFresh || !polFresh ? 'stale' : comparable ? 'comparable_quote' : 'unavailable' };
       }) };
   });
-  return { status: 'matched', polEventId: event.id, markets: comparisons };
+  return { status: 'matched', polEventId: event.id, homeId: linked.homeId, awayId: linked.awayId, markets: comparisons };
 }

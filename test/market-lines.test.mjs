@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { lineFor, groupMarkets, preferredLine, correspondingOutcome } from '../public/market-lines.js';
+import { lineFor, lineForReference, groupMarkets, preferredLine, correspondingOutcome } from '../public/market-lines.js';
 
 const event = { title: 'Nuggets vs. Thunder', markets: [] };
 const market = (id, type, question, price = 0.5) => ({ id, type, question, acceptingOrders: true, closed: false,
@@ -10,6 +10,12 @@ test('spread selectors use one team as the reference and retain opposite handica
   assert.deepEqual(lineFor(market('a', 'spreads', 'Spread: Thunder (-8.5)'), event), { value: 8.5, label: '+8.5' });
   assert.deepEqual(lineFor(market('b', 'spreads', 'Spread: Nuggets (-8.5)'), event), { value: -8.5, label: '-8.5' });
   assert.equal(lineFor(market('c', 'spreads', 'Spread: Lakers (-3.5)'), event).value, null);
+});
+
+test('spread comparison can use the other source’s home team when matchup order is reversed', () => {
+  assert.deepEqual(lineForReference(market('a', 'spreads', 'Spread: Thunder (-8.5)'), 'okc', 'den'), { value: -8.5, label: '-8.5' });
+  assert.deepEqual(lineForReference(market('b', 'spreads', 'Spread: Nuggets (-8.5)'), 'okc', 'den'), { value: 8.5, label: '+8.5' });
+  assert.equal(lineForReference(market('c', 'spreads', 'Spread: Lakers (-3.5)'), 'okc', 'den').value, null);
 });
 
 test('grouped line cards sort numeric lines and preserve original asset identities', () => {

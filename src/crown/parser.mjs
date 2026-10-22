@@ -98,19 +98,46 @@ export function parseMarkets(root, profile, match, mode, now = new Date().toISOS
       const parentId = mapping.matchReference === 'familyId' ? match.familyId : match.id;
       if (!parentId || scalar(row, mapping.matchIdPath) !== parentId) continue;
       if (!mapping.fullGamePathVerified && scalar(row, mapping.phasePath) !== String(mapping.fullGameValue)) continue;
-      const rawLine = mapping.type === 'moneyline' ? null : numeric(scalar(row, mapping.linePath));
+      const directions = mapping.type === 'totals' ? ['over', 'under'] : ['home', 'away'];
+      const candidates = directions.map(direction => scalar(row, mapping.odds?.[direction]));
+      const knownStatus = value => ['open', 'closed', 'suspended'].includes(value) ? value : 'unknown';
+      const marketStatus = knownStatus(mapping.statusValues?.[scalar(row, mapping.statusPath)]);
+      const rowStatus = mapping.rowStatusPath ? knownStatus(mapping.rowStatusValues?.[scalar(row, mapping.rowStatusPath)]) : 'open';
+      // A row-level closure also closes its individually enabled markets. Unreviewed
+      // row switches can never promote a market to open.
+      const status = [marketStatus, rowStatus].includes('closed') ? 'closed'
+        : [marketStatus, rowStatus].includes('unknown') ? 'unknown'
+        : [marketStatus, rowStatus].includes('suspended') ? 'suspended' : 'open';
+      const lineText = mapping.type === 'moneyline' ? null : scalar(row, mapping.linePath);
+      const oppositeText = mapping.oppositeLinePath ? scalar(row, mapping.oppositeLinePath) : null;
+      // Crown sends empty, zero-quote alternative rows before opening a line.
+      // Skip only a confirmed closed placeholder; malformed or quoted rows remain issues.
+      if (mapping.skipEmptyLine && mapping.type !== 'moneyline' && lineText === '' && status === 'closed'
+        && (!mapping.oppositeLinePath || oppositeText === '')
+        && candidates.every(value => value === '' || numeric(value) === 0)) continue;
+      const rawLine = numeric(lineText);
       if (mapping.type !== 'moneyline' && (rawLine === null || !Number.isFinite(rawLine))) { issues.push({ code: 'MISSING_LINE', type: mapping.type }); continue; }
       if (mapping.type === 'totals' && rawLine <= 0) { issues.push({ code: 'INVALID_LINE', type: mapping.type }); continue; }
-      if (mapping.type === 'spreads' && !['home', 'away'].includes(mapping.lineReference)) throw new CrownError('DIRECTION_UNVERIFIED');
-      const line = mapping.type === 'spreads' && mapping.lineReference === 'away' ? -rawLine : rawLine;
+      if (mapping.type === 'totals' && mapping.oppositeLinePath && numeric(oppositeText) !== rawLine) { issues.push({ code: 'CONFLICTING_LINE', type: mapping.type }); continue; }
+      let line = rawLine;
+      if (mapping.type === 'spreads') {
+        if (mapping.favoritePath) {
+          const favorite = mapping.favoriteValues?.[scalar(row, mapping.favoritePath)];
+          if (!['home', 'away'].includes(favorite)) { issues.push({ code: 'DIRECTION_UNVERIFIED', type: mapping.type }); continue; }
+          // This mapping explicitly describes an unsigned magnitude, not a signed
+          // home/away handicap. Refuse a signed negative source rather than guessing.
+          if (rawLine < 0) { issues.push({ code: 'INVALID_LINE', type: mapping.type }); continue; }
+          line = rawLine === 0 ? 0 : favorite === 'home' ? -rawLine : rawLine;
+        } else {
+          if (!['home', 'away'].includes(mapping.lineReference)) throw new CrownError('DIRECTION_UNVERIFIED');
+          line = mapping.lineReference === 'away' ? -rawLine : rawLine;
+        }
+      }
       const key = `${match.id}:${mapping.type}:full:${line ?? ''}`;
-      const statusMarker = scalar(row, mapping.statusPath);
-      const status = mapping.statusValues?.[statusMarker] ?? 'unknown';
-      const directions = mapping.type === 'totals' ? ['over', 'under'] : ['home', 'away'];
-      const sides = directions.map(direction => {
-        const candidate = scalar(row, mapping.odds?.[direction]);
+      const sides = directions.map((direction, index) => {
+        const candidate = candidates[index];
         const rawOdds = numeric(candidate) === null ? null : candidate;
-        return { direction, line: mapping.type === 'spreads' && direction === 'away' ? -line : line,
+        return { direction, line: mapping.type === 'spreads' && direction === 'away' && line !== 0 ? -line : line,
           rawOdds, decimalOdds: decimalOdds(rawOdds, mapping.oddsFormat), oddsFormat: mapping.oddsFormat ?? 'unknown' };
       });
       const market = { key, matchId: match.id, type: mapping.type, phase: 'full', line, sides, status,
