@@ -4,12 +4,13 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { resolve, extname } from 'node:path';
 import { Monitor } from './src/monitor.mjs';
+import { PriceHistory } from './src/price-history.mjs';
 import { CrownMonitor } from './src/crown/monitor.mjs';
 import { CrownLoginError, CrownLoginService } from './src/crown/login.mjs';
 
 const PUBLIC = fileURLToPath(new URL('./public/', import.meta.url));
 const DEFAULT_CROWN_CONFIG = resolve('.local/crown/live-config.json');
-const FILES = new Map([['/', 'index.html'], ['/app.js', 'app.js'], ['/chinese.js', 'chinese.js'], ['/market-lines.js', 'market-lines.js'], ['/crown-login.js', 'crown-login.js'], ['/styles.css', 'styles.css']]);
+const FILES = new Map([['/', 'index.html'], ['/app.js', 'app.js'], ['/chinese.js', 'chinese.js'], ['/market-lines.js', 'market-lines.js'], ['/price-history.js', 'price-history.js'], ['/crown-login.js', 'crown-login.js'], ['/styles.css', 'styles.css']]);
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
 
 function isLoopback(address = '') {
@@ -51,7 +52,7 @@ function crownConfigPath(monitor) {
   return existsSync(DEFAULT_CROWN_CONFIG) ? DEFAULT_CROWN_CONFIG : null;
 }
 
-export function createApp({ monitor = new Monitor(), crown = new CrownMonitor({ configPath: crownConfigPath(monitor) }), crownLogin = new CrownLoginService() } = {}) {
+export function createApp({ monitor = new Monitor(), crown = new CrownMonitor({ configPath: crownConfigPath(monitor) }), crownLogin = new CrownLoginService(), priceHistory = new PriceHistory({ monitor, crown, filename: monitor.demo ? ':memory:' : process.env.PRICE_HISTORY_DB_PATH ?? resolve('.local/price-history.sqlite') }) } = {}) {
   const clients = new Set();
   const send = (response, state) => {
     if (response.writableLength > 2 * 1024 * 1024) { response.destroy(); return; }
@@ -105,6 +106,26 @@ export function createApp({ monitor = new Monitor(), crown = new CrownMonitor({ 
       if (!id || id.length > 100) { json(400, { error: '需要比赛标识' }); return; }
       json(200, { matchId: id, history: crown.store.history(id) }); return;
     }
+    if (request.method === 'GET' && url.pathname === '/api/price-history') {
+      if (!isLocalSameOriginRead(request)) { json(403, { error: '价格历史仅允许本机同源访问' }); return; }
+      const eventId = url.searchParams.get('eventId');
+      const marketId = url.searchParams.get('marketId');
+      const type = url.searchParams.get('type');
+      const source = url.searchParams.get('source');
+      const limitText = url.searchParams.get('limit');
+      const beforeText = url.searchParams.get('before');
+      const limit = limitText === null ? 50 : Number(limitText);
+      const before = beforeText === null ? undefined : Number(beforeText);
+      if (!eventId || eventId.length > 150 || !marketId || marketId.length > 150 || !['spreads', 'totals'].includes(type)
+        || (source !== null && !['pol', 'crown'].includes(source))
+        || !Number.isSafeInteger(limit) || limit < 1 || limit > 200
+        || (before !== undefined && (!Number.isSafeInteger(before) || before < 1))) {
+        json(400, { error: '请选择让分或大小分盘口，历史查询参数无效。' }); return;
+      }
+      try { json(200, priceHistory.history({ eventId, marketId, type, source: source ?? undefined, limit, before })); }
+      catch { json(503, { error: '暂时无法读取价格历史，请稍后重试。' }); }
+      return;
+    }
     if (request.method === 'GET' && url.pathname === '/api/state') { json(200, snapshot()); return; }
     if (request.method === 'GET' && url.pathname === '/api/health') {
       const state = monitor.snapshot();
@@ -149,9 +170,9 @@ export function createApp({ monitor = new Monitor(), crown = new CrownMonitor({ 
   });
   const heartbeat = setInterval(() => { for (const response of clients) response.write(': heartbeat\n\n'); }, 15000);
   heartbeat.unref();
-  server.on('close', () => { clearInterval(heartbeat); monitor.off('state', broadcast); crown.off?.('state', broadcast); });
+  server.on('close', () => { clearInterval(heartbeat); monitor.off('state', broadcast); crown.off?.('state', broadcast); priceHistory.close(); });
   server.on('listening', () => { crown.start(); void crownLogin.startMonitoring?.(); });
-  return { server, monitor, crown, crownLogin, close: () => { monitor.stop(); for (const client of clients) client.end(); void Promise.all([crown.stop(), crownLogin.close()]).finally(() => server.close()); } };
+  return { server, monitor, crown, crownLogin, priceHistory, close: () => { monitor.stop(); for (const client of clients) client.end(); void Promise.all([crown.stop(), crownLogin.close()]).finally(() => server.close()); } };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

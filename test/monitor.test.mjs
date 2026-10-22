@@ -174,7 +174,7 @@ test('settings generation discards a previous discovery response and automatical
   assert.equal(monitor.snapshot().events.some(event => event.id === 'old-range'), false);
 });
 
-test('closed game markets remain visible while their assets are excluded from REST/WS monitoring', async t => {
+test('closed games are hidden and never enter REST/WS monitoring', async t => {
   let booksCalls = 0;
   const upstream = fakeUpstream({
     discover: async () => [game('settled', { closed: true })],
@@ -184,11 +184,26 @@ test('closed game markets remain visible while their assets are excluded from RE
   t.after(() => monitor.stop());
   monitor.start();
   await monitor.discoveryPending;
-  assert.equal(monitor.snapshot().events[0].markets[0].closed, true);
-  assert.equal(monitor.snapshot().events[0].markets[0].acceptingOrders, false);
+  assert.deepEqual(monitor.snapshot().events, []);
   assert.deepEqual(monitor.tokens, []);
   assert.equal(upstream.sockets.length, 0);
   assert.equal(booksCalls, 0);
+});
+
+test('a game finishing during discovery is removed together with its books and subscription', async t => {
+  const upstream = fakeUpstream();
+  const monitor = await running(t, upstream);
+  const socket = upstream.sockets[0];
+  assert.equal(monitor.snapshot().events.length, 1);
+  assert.equal(Object.keys(monitor.snapshot().books).length, 2);
+  // Completion can be reported before the individual markets close.
+  upstream.discover = async () => [{ ...game(), ended: true }];
+  await monitor.refreshEvents();
+  assert.deepEqual(monitor.snapshot().events, []);
+  assert.deepEqual(monitor.snapshot().books, {});
+  assert.deepEqual(monitor.tokens, []);
+  assert.equal(socket.terminated, true);
+  assert.equal(monitor.snapshot().stream.connected, false);
 });
 
 test('socket close retains visible depth but blocks deltas until resynchronization', async t => {

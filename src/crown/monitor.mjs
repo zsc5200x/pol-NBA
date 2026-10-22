@@ -48,6 +48,7 @@ export class CrownMonitor extends EventEmitter {
     if (this.pending || !this.running) return this.pending;
     this.pending = this.runCycle().finally(() => {
       this.pending = null;
+      this.emit('quotes', { observedAt: new Date().toISOString() });
       this.emit('state', this.state);
       if (this.running) this.timer = setTimeout(() => void this.cycle(), Math.min(300000, (this.config?.intervalMs ?? 30000) * 2 ** Math.min(this.failureCount, 4)));
     });
@@ -116,6 +117,7 @@ export class CrownMonitor extends EventEmitter {
         this.state.coverage[match.id] = coverageFor([...markets.values()], complete && detailsComplete && sameIdentity ? observation.types : null);
         if (detailsComplete) this.state.collectedIds.push(match.id);
         else if (!this.state.failedIds.includes(match.id)) this.state.failedIds.push(match.id);
+        this.emit('quotes', { matchId: match.id, observedAt: new Date().toISOString() });
       }
       this.store.setMeta('activeIds', this.state.activeIds);
       const success = !modeErrors.length && !this.state.failedIds.length && complete;

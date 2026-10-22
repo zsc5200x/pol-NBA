@@ -123,6 +123,30 @@ test('normalization uses game start fields, rejects invalid time, and never subs
   assert.equal(normalizeEvent({ ...raw, startTime: undefined, startDate: '2026-10-22T00:00:00Z' }), null);
 });
 
+test('finished or closed events are hidden even while their markets are still open', () => {
+  for (const status of [{ closed: true }, { ended: true }]) {
+    assert.equal(normalizeEvent(event(status)), null);
+  }
+});
+
+test('closed markets are removed and an event with no remaining target markets is hidden', () => {
+  const market = event().markets[0];
+  const mixed = event({ markets: [
+    { ...market, id: 'settled', closed: true },
+    { ...market, id: 'open', closed: false },
+  ] });
+  assert.deepEqual(normalizeEvent(mixed).markets.map(m => m.id), ['open']);
+  assert.equal(normalizeEvent(event({ markets: [{ ...market, closed: true }] })), null);
+});
+
+test('started games and temporarily paused markets remain visible without an explicit end status', () => {
+  const raw = event({ live: true, ended: false, closed: false, endDate: '2026-10-22T00:00:00Z' });
+  raw.markets[0].acceptingOrders = false;
+  const selected = selectEvents([raw], { now: new Date('2026-10-22T02:00:00Z') });
+  assert.equal(selected.length, 1);
+  assert.equal(selected[0].markets[0].acceptingOrders, false);
+});
+
 test('missing/invalid reference prices remain unknown instead of becoming a live zero', () => {
   for (const input of [null, undefined, '', 'NaN', 'Infinity', -0.1, 1.01]) assert.equal(price(input), null);
   assert.equal(price('0'), 0);

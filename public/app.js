@@ -1,5 +1,6 @@
 import { eventTeams, eventTitle, marketTitle, outcomeTitle, typeName, errorMessage, teamFor } from './chinese.js';
 import { groupMarkets, preferredLine, correspondingOutcome, lineFor, lineForReference } from './market-lines.js';
+import { createPriceHistoryPanel } from './price-history.js';
 
 const $ = (selector) => document.querySelector(selector);
 const nodes = Object.fromEntries(['notice', 'stat-events', 'stat-markets', 'stat-spread', 'stat-depth', 'date-range', 'game-count', 'games', 'match-heading', 'markets', 'market-link', 'book-mode', 'book-selection', 'book-summary', 'book', 'book-footnote'].map(id => [id, document.getElementById(id)]));
@@ -14,6 +15,7 @@ let transportConnected = false;
 let localError = null;
 let gamesSignature = null;
 let renderedMarketEvent = null;
+let historyType = 'spreads';
 const chosenLines = new Map();
 const lineScroll = new Map();
 const bookPanel = document.querySelector('.book-panel');
@@ -216,6 +218,15 @@ function renderMarkets() {
     // Restore it before renderBook captures the position for the next update.
     nodes.book.scrollTop = bookScrollTop;
   });
+  renderPriceHistory();
+}
+
+function renderPriceHistory() {
+  const event = activeGame();
+  const group = event && groupMarkets(event).find(item => item.type === historyType);
+  const line = group && preferredLine(group.lines, chosenLines.get(`${event.id}:${historyType}`));
+  historyPanel.update({ event, type: historyType, market: line?.market, lines: group?.lines ?? [],
+    lineLabel: line?.label, timezone: state?.timezone || 'Asia/Shanghai', connected: transportConnected });
 }
 
 function renderMarketsContent() {
@@ -261,6 +272,7 @@ function renderMarketsContent() {
     disclosure.setAttribute('aria-expanded', String(isExpanded));
     disclosure.setAttribute('aria-controls', 'market-book-panel');
     disclosure.addEventListener('click', () => {
+      if (group.type !== 'moneyline') historyType = group.type;
       if (isExpanded) expandedMarketKey = null;
       else {
         selectedToken = correspondingOutcome(selectedOutcome()?.outcome, market)?.tokenId ?? null;
@@ -288,6 +300,7 @@ function renderMarketsContent() {
       else if (quote.book?.error) button.append(el('small', 'quote-warning', '行情异常'));
       else if (!quote.book) button.append(el('small', 'quote-warning', '等待报价'));
       button.addEventListener('click', () => {
+        if (group.type !== 'moneyline') historyType = group.type;
         expandedMarketKey = isExpanded && selectedToken === outcome.tokenId ? null : key;
         selectedToken = outcome.tokenId;
         chosenLines.set(key, market.id);
@@ -311,6 +324,7 @@ function renderMarketsContent() {
         chip.setAttribute('aria-pressed', String(option.market.id === market.id));
         chip.setAttribute('aria-label', marketTitle(option.market, game));
         chip.addEventListener('click', () => {
+          historyType = group.type;
           if (expandedMarketKey && expandedMarketKey !== key) expandedMarketKey = null;
           selectedToken = correspondingOutcome(selectedOutcome()?.outcome, option.market)?.tokenId ?? null;
           chosenLines.set(key, option.market.id);
@@ -375,7 +389,10 @@ function orderRows(levels, side, maxDepth) {
 
 function renderBook() {
   const scrollTop = renderedBookToken === selectedToken ? nodes.book.scrollTop : 0;
+  const marketScrollTop = nodes.markets.scrollTop;
   preservePageScroll(renderBookContent);
+  // Rebuilding the depth rows can temporarily shrink the outer scroll area.
+  nodes.markets.scrollTop = marketScrollTop;
   nodes.book.scrollTop = scrollTop;
   renderedBookToken = selectedToken;
 }
@@ -452,13 +469,27 @@ async function init() {
     status();
   }
   const stream = new EventSource('/api/stream');
-  stream.addEventListener('open', () => { transportConnected = true; status(); });
+  stream.addEventListener('open', () => { transportConnected = true; status(); renderPriceHistory(); });
   stream.addEventListener('state', event => {
     try { acceptState(JSON.parse(event.data)); } catch { /* Wait for the next valid snapshot. */ }
   });
-  stream.addEventListener('error', () => { transportConnected = false; status(); });
+  stream.addEventListener('error', () => { transportConnected = false; status(); renderPriceHistory(); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) fetch('/api/state').then(response => response.ok ? response.json() : null).then(acceptState).catch(() => {}); });
   setInterval(() => { status(); if (state) renderBook(); }, 1000);
 }
+
+const historyPanel = createPriceHistoryPanel(document.getElementById('price-history'), {
+  onType(type) { historyType = type; renderPriceHistory(); },
+  onMarket(type, marketId) {
+    const game = activeGame();
+    const market = game?.markets.find(item => item.id === marketId && item.type === type);
+    if (!market) return;
+    historyType = type;
+    chosenLines.set(`${game.id}:${type}`, market.id);
+    selectedToken = correspondingOutcome(selectedOutcome()?.outcome, market)?.tokenId ?? null;
+    if (expandedMarketKey && expandedMarketKey !== `${game.id}:${type}`) expandedMarketKey = null;
+    renderMarkets(); renderBook(); renderStats();
+  },
+});
 
 init();

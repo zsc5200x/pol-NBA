@@ -59,6 +59,7 @@ export class Monitor extends EventEmitter {
     this.tokens = [];
     this.discoveryError = this.bookError = null;
     this.disconnect();
+    this.emit('markets', this.state.events);
     if (this.demo) this.makeDemo();
     else void this.refreshEvents();
     this.publish();
@@ -104,6 +105,7 @@ export class Monitor extends EventEmitter {
           this.disconnect();
           this.connect();
         } else if (!this.ws && tokens.length) this.connect();
+        this.emit('markets', this.state.events);
         await this.refreshBooks();
       } catch (error) {
         if (generation === this.generation && !this.stopped) this.discoveryError = `比赛列表获取失败：${error.message}`;
@@ -132,6 +134,7 @@ export class Monitor extends EventEmitter {
           const raw = await this.upstream.books(batch);
           if (this.stopped || generation !== this.generation) return;
           const returned = new Set();
+          const accepted = [];
           for (const item of raw) {
             const book = normalizeBook(item);
             if (!batch.includes(book.tokenId)) continue;
@@ -139,7 +142,9 @@ export class Monitor extends EventEmitter {
             const old = this.state.books[book.tokenId];
             if (old && !old.error && (book.timestamp && old.timestamp > book.timestamp || !book.timestamp && Date.parse(old.updatedAt) > started)) continue;
             this.state.books[book.tokenId] = book;
+            accepted.push(book.tokenId);
           }
+          if (accepted.length) this.emit('quotes', { tokenIds: accepted, observedAt: iso() });
           for (const token of batch) {
             if (!returned.has(token)) {
               this.markBookError(token, '该标的未返回订单簿（可能已关闭）');
@@ -169,6 +174,7 @@ export class Monitor extends EventEmitter {
     const book = this.state.books[tokenId] ?? { tokenId, bids: [], asks: [], updatedAt: null, source: 'live', timestamp: 0 };
     book.error = error;
     this.state.books[tokenId] = book;
+    this.emit('quotes', { tokenIds: [tokenId], observedAt: iso() });
   }
 
   disconnect() {
@@ -250,11 +256,13 @@ export class Monitor extends EventEmitter {
   applyMessage(message) {
     if (!message || typeof message !== 'object') return;
     let changed = false;
+    const affected = new Set();
     if (message.event_type === 'book' && this.tokens.includes(String(message.asset_id))) {
       const book = normalizeBook(message);
       const old = this.state.books[book.tokenId];
       if (!old || old.error || !book.timestamp || book.timestamp >= old.timestamp) {
         this.state.books[book.tokenId] = book;
+        affected.add(book.tokenId);
         changed = true;
       }
     } else if (message.event_type === 'price_change') {
@@ -264,6 +272,7 @@ export class Monitor extends EventEmitter {
         if (!book || book.error || !book.updatedAt || (Number(message.timestamp) || 0) < book.timestamp) continue;
         if (updateLevel(book, change)) {
           book.timestamp = Number(message.timestamp) || book.timestamp;
+          affected.add(String(change.asset_id));
           changed = true;
         }
       }
@@ -273,6 +282,9 @@ export class Monitor extends EventEmitter {
       this.state.stream.lastMessageAt = this.state.updatedAt;
       if (message.event_type === 'book') this.state.stream.bookMessages++;
       else this.state.stream.priceChanges++;
+      // One upstream message is atomic; preserve transitions between messages
+      // without exposing temporary depth while a message is still being applied.
+      this.emit('quotes', { tokenIds: [...affected], observedAt: this.state.updatedAt });
       this.publish();
     }
   }

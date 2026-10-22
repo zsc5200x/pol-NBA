@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
+import { get as httpGet } from 'node:http';
 import { Monitor } from '../src/monitor.mjs';
 import { createApp } from '../server.mjs';
 
@@ -36,7 +37,7 @@ test('demo HTTP state is explicitly synthetic and serves health plus dashboard a
   assert.equal(health.server, 'ok');
   assert.equal(health.mode, 'demo');
   assert.equal(health.events, state.events.length);
-  for (const [path, mime] of [['/', 'text/html'], ['/app.js', 'text/javascript'], ['/chinese.js', 'text/javascript'], ['/market-lines.js', 'text/javascript'], ['/crown-login.js', 'text/javascript'], ['/styles.css', 'text/css'], ['/logos/lal.svg', 'image/svg+xml']]) {
+  for (const [path, mime] of [['/', 'text/html'], ['/app.js', 'text/javascript'], ['/chinese.js', 'text/javascript'], ['/market-lines.js', 'text/javascript'], ['/price-history.js', 'text/javascript'], ['/crown-login.js', 'text/javascript'], ['/styles.css', 'text/css'], ['/logos/lal.svg', 'image/svg+xml']]) {
     const response = await fetch(`${app.base}${path}`);
     assert.equal(response.status, 200, `${path} should be available`);
     assert.ok(response.headers.get('content-type').startsWith(mime));
@@ -53,6 +54,41 @@ test('demo HTTP state is explicitly synthetic and serves health plus dashboard a
   assert.equal((await fetch(`${app.base}/logos/zzz.svg`)).status, 404);
   assert.equal((await fetch(`${app.base}/logos/NOTICE.md`)).status, 404);
   assert.equal((await fetch(`${app.base}/logos/%2e%2e/server.mjs`)).status, 404);
+});
+
+test('price history validates filters and pagination and restricts reads to this local app', async t => {
+  const calls = [];
+  const priceHistory = {
+    history: filters => { calls.push(filters); return { records: [], hasMore: false, nextBefore: null, recordingSince: null }; },
+    close() {},
+  };
+  const app = await demoApp(t, { priceHistory });
+  const query = new URLSearchParams({ eventId: 'game-1', marketId: 'line-95', type: 'spreads', source: 'crown', limit: '20', before: '123' });
+  const response = await fetch(`${app.base}/api/price-history?${query}`);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  assert.deepEqual(calls, [{ eventId: 'game-1', marketId: 'line-95', type: 'spreads', source: 'crown', limit: 20, before: 123 }]);
+  assert.deepEqual((await response.json()).records, []);
+  for (const [key, value] of [['eventId', ''], ['marketId', ''], ['type', 'moneyline'], ['source', 'bad'], ['limit', ''], ['limit', '201'], ['limit', '1.5'], ['before', '0'], ['before', 'NaN']]) {
+    const invalid = new URLSearchParams(query); invalid.set(key, value);
+    assert.equal((await fetch(`${app.base}/api/price-history?${invalid}`)).status, 400, `${key}=${value}`);
+  }
+  assert.equal((await fetch(`${app.base}/api/price-history?${query}`, { headers: { origin: 'https://untrusted.example' } })).status, 403);
+  const reboundStatus = await new Promise((resolve, reject) => {
+    const request = httpGet(`${app.base}/api/price-history?${query}`, { headers: { host: 'untrusted.example' } }, response => {
+      response.resume(); response.on('end', () => resolve(response.statusCode));
+    });
+    request.on('error', reject);
+  });
+  assert.equal(reboundStatus, 403);
+  assert.equal(calls.length, 1, 'rejected requests must not query history');
+});
+
+test('price history reports storage errors without exposing database details', async t => {
+  const app = await demoApp(t, { priceHistory: { history() { throw new Error('private database path'); }, close() {} } });
+  const response = await fetch(`${app.base}/api/price-history?eventId=game-1&marketId=market-1&type=totals`);
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), { error: '暂时无法读取价格历史，请稍后重试。' });
 });
 
 test('SSE immediately sends an identifiable state snapshot and subsequent monitor updates', async t => {

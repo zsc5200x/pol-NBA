@@ -66,9 +66,12 @@ export function updateLevel(book, change, now = new Date().toISOString()) {
 }
 
 export function normalizeEvent(raw) {
+  // A game can finish before all markets settle. Use explicit upstream status,
+  // not start/end timestamps or temporary pauses in accepting orders.
+  if (raw.closed === true || raw.ended === true) return null;
   const markets = (raw.markets ?? []).filter(m =>
     ['moneyline', 'spreads', 'totals'].includes(m.sportsMarketType) &&
-    (m.closed || m.enableOrderBook !== false)).map(m => {
+    !m.closed && m.enableOrderBook !== false).map(m => {
     const outcomes = array(m.outcomes);
     const legacyTokens = array(m.clobTokenIds);
     const tokens = legacyTokens.length ? legacyTokens : array(m.positionIds);

@@ -27,7 +27,9 @@
       <div class="terminal-layout">
         <aside class="games-panel panel"><div class="panel-heading"><h2>比赛列表</h2><span class="mono" id="game-count">0 场比赛</span></div><div id="games" class="games-list"></div><div class="panel-footnote">时间按所选时区显示<br>赛程每分钟自动刷新</div></aside>
 
-        <section class="market-panel panel"><div class="panel-heading"><h2>市场盘口</h2><a id="market-link" class="external-link hidden" target="_blank" rel="noopener noreferrer">查看市场 ↗</a></div><div id="match-heading" class="match-heading"></div><div id="markets" class="market-list"></div></section>
+        <section class="market-panel panel"><div class="panel-heading"><h2>市场盘口</h2><a id="market-link" class="external-link hidden" target="_blank" rel="noopener noreferrer">查看市场 ↗</a></div><div id="match-heading" class="match-heading"></div><div id="markets" class="market-list" tabindex="0" role="region" aria-label="市场盘口内容，可上下滚动"></div></section>
+
+        <section id="price-history" class="history-panel panel" aria-label="让分和大小分价格变动"></section>
 
         <section class="book-panel panel"><div class="panel-heading"><h2>订单簿</h2><span class="book-mode" id="book-mode">实时买卖挂单</span></div><div id="book-selection" class="book-selection"></div><div id="book-summary" class="book-summary"></div><div id="book" class="orderbook"></div><div class="panel-footnote book-footnote" id="book-footnote">选择一个市场结果以查看深度</div></section>
       </div>
