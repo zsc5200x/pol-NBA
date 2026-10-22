@@ -4,7 +4,7 @@
 
 ## 启动
 
-需要 Node.js 22 或以上版本（本云环境已验证 Node.js 24）。
+需要 Node.js 22.13 或以上版本（本云环境已验证 Node.js 24）。
 
 ### 下载到自己的电脑
 
@@ -85,3 +85,9 @@ npm run check  # JavaScript 语法检查
 `GET /api/health` 返回服务、数据模式和上游状态；HTTP 200 仅表示服务可响应，真实行情还要确认 `mode=live`、`upstream=live`。`GET /api/state` 返回赛程、订单簿、更新时间及 WebSocket 状态；`GET /api/stream` 提供 `state` SSE 事件。`POST /api/settings` 可切换 `range` 和 `timezone`，设置作用于整个本地进程、重启后恢复默认。
 
 接口依据与字段说明见 [docs/api-notes.md](docs/api-notes.md)。
+
+## 皇冠只读监控与同线比较
+
+已加入独立的配置驱动采集器、SQLite 历史存储和中文跨平台比较面板。默认未配置，不会发出皇冠请求，也不展示虚构水位。当前已支持检查用户上传的历史响应结构，真实实时接口、时区和全盘口覆盖仍待有效本机会话与 Network / 网页证据验证。
+
+请先阅读 [真实字段与未验证项](docs/crown-field-mapping.md) 和 [本地安全接入说明](docs/crown-setup.md)。安全配置示例为 `config/crown.example.json`，其中未知字段刻意留空，不能直接宣称可采集。原有 Polymarket 页面保持独立可用。

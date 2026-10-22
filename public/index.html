@@ -40,9 +40,16 @@
         <section class="book-panel panel"><div class="panel-heading"><h2>订单簿</h2><span class="book-mode" id="book-mode">实时买卖挂单</span></div><div id="book-selection" class="book-selection"></div><div id="book-summary" class="book-summary"></div><div id="book" class="orderbook"></div><div class="panel-footnote book-footnote" id="book-footnote">选择一个市场结果以查看深度</div></section>
       </div>
 
+      <section class="panel crown-panel" id="crown-panel" aria-label="皇冠与预测市场水位比较">
+        <div class="panel-heading"><h2>皇冠 · 跨平台盘口比较</h2><span id="crown-status">等待采集状态</span></div>
+        <div class="crown-toolbar"><label>来源<select id="crown-source"><option value="">今日与早盘</option><option value="today">今日</option><option value="early">早盘</option></select></label><label>盘口<select id="crown-type"><option value="">全部全场盘口</option><option value="moneyline">独赢</option><option value="spreads">让分</option><option value="totals">大小分</option></select></label><label>比赛<select id="crown-match"><option value="">全部比赛</option></select></label></div>
+        <p id="crown-summary" class="crown-meta"></p><div id="crown-content" class="crown-content"></div><details id="crown-captures" class="crown-capture-review"><summary>历史响应样本核对（非实时，不参与价差计算）</summary><div id="crown-capture-content">尚未读取本机样本报告</div></details>
+      </section>
+
       <footer><span><span class="footer-dot"></span> 只读监控 · 不提交订单</span><span>价格单位为美分 · 数量单位为份 · 每份结算价值最高 1 美元</span><span>数据来源：预测市场官方接口</span></footer>
     </main>
   </div>
   <script type="module" src="/app.js"></script>
+  <script type="module" src="/crown.js"></script>
 </body>
 </html>

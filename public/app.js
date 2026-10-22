@@ -5,6 +5,7 @@ const $ = (selector) => document.querySelector(selector);
 const nodes = Object.fromEntries(['connection', 'mode-label', 'clock', 'timezone-label', 'update-label', 'timezone', 'notice', 'stat-events', 'stat-markets', 'stat-spread', 'stat-depth', 'date-range', 'game-count', 'games', 'match-heading', 'market-types', 'markets', 'market-link', 'book-mode', 'book-selection', 'book-summary', 'book', 'book-footnote'].map(id => [id, document.getElementById(id)]));
 
 let state = null;
+let crownQuotes = new Map();
 let selectedEvent = null;
 let selectedToken = null;
 let selectedType = 'all';
@@ -275,6 +276,11 @@ function renderMarketsContent() {
       button.setAttribute('aria-label', `${outcomeTitle(outcome, market)}，买入价 ${cents(quote.ask)}`);
       button.title = `买入价（卖一）：${cents(quote.ask)}；卖出价（买一）：${cents(quote.bid)}`;
       button.append(el('span', 'outcome-name', outcomeTitle(outcome, market)), el('strong', 'mono', cents(quote.ask)));
+      const crown = crownQuotes.get(outcome.tokenId);
+      if (crown) {
+        const format = ({hongkong:'香港盘',decimal:'十进制',american:'美式'})[crown.oddsFormat] ?? '格式待核验';
+        button.append(el('small', 'crown-inline-quote', `皇冠 ${crown.rawOdds ?? '—'}（${format}）${crown.comparisonStatus === 'comparable_quote' ? '' : ' · 暂不可比'}`));
+      }
       if (market.closed) button.append(el('small', 'quote-warning', '已结束'));
       else if (quote.book?.error) button.append(el('small', 'quote-warning', '行情异常'));
       else if (!quote.book) button.append(el('small', 'quote-warning', '等待报价'));
@@ -481,3 +487,15 @@ async function init() {
 }
 
 init();
+
+window.addEventListener('crown:comparison', event => {
+  const quotes = new Map();
+  for (const match of event.detail?.matches ?? []) {
+    if (match.comparison?.status !== 'matched') continue;
+    for (const market of match.comparison.markets ?? []) if (market.status === 'matched') for (const side of market.sides) {
+      if (side.polTokenId) quotes.set(side.polTokenId, side);
+    }
+  }
+  crownQuotes = quotes;
+  if (state) renderMarkets();
+});

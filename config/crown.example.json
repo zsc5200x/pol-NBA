@@ -1,0 +1,122 @@
+{
+  "endpoint": "https://m321.mos077.com/transform.php",
+  "sessionFile": "./session.json",
+  "intervalMs": 30000,
+  "requestGapMs": 1000,
+  "timeoutMs": 15000,
+  "timestamp": {
+    "reviewed": false,
+    "field": null,
+    "unit": null
+  },
+  "teamAliases": {},
+  "lists": {
+    "today": {
+      "reviewed": false,
+      "evidence": {
+        "path": null,
+        "sha256": null,
+        "reviewedAt": null
+      },
+      "containerPath": "response",
+      "recordsPath": "response.*",
+      "fields": {
+        "id": "GID",
+        "leagueId": "LID",
+        "league": "LEAGUE",
+        "home": null,
+        "away": null,
+        "startTime": "GAME_DATE_TIME",
+        "status": null,
+        "familyId": "GIDM"
+      },
+      "leagueNames": [
+        "NBA美国职业篮球联赛"
+      ],
+      "statusValues": {},
+      "pagination": {
+        "reviewed": false,
+        "hasMorePath": null,
+        "moreValues": [],
+        "endValues": [],
+        "nextPath": null,
+        "requestField": null,
+        "maxPages": 30
+      },
+      "params": {},
+      "sourceModePath": "phpData.NOWSHOWTYPE",
+      "timeZone": null,
+      "requestEvidence": {
+        "path": null,
+        "sha256": null,
+        "reviewedAt": null
+      }
+    },
+    "early": {
+      "reviewed": false,
+      "evidence": {
+        "path": null,
+        "sha256": null,
+        "reviewedAt": null
+      },
+      "containerPath": "response",
+      "recordsPath": "response.*",
+      "fields": {
+        "id": "GID",
+        "leagueId": "LID",
+        "league": "LEAGUE",
+        "home": null,
+        "away": null,
+        "startTime": "GAME_DATE_TIME",
+        "status": null,
+        "familyId": "GIDM"
+      },
+      "leagueNames": [
+        "NBA美国职业篮球联赛"
+      ],
+      "statusValues": {},
+      "pagination": {
+        "reviewed": false,
+        "hasMorePath": null,
+        "moreValues": [],
+        "endValues": [],
+        "nextPath": null,
+        "requestField": null,
+        "maxPages": 30
+      },
+      "params": {},
+      "sourceModePath": "phpData.NOWSHOWTYPE",
+      "timeZone": null,
+      "requestEvidence": {
+        "path": null,
+        "sha256": null,
+        "reviewedAt": null
+      }
+    }
+  },
+  "details": {
+    "today": [
+      {
+        "id": "main",
+        "reviewed": false,
+        "evidence": {
+          "path": null,
+          "sha256": null,
+          "reviewedAt": null
+        },
+        "containerPath": null,
+        "params": {
+          "filter": "Main",
+          "showtype": "today"
+        },
+        "markets": [],
+        "requestEvidence": {
+          "path": null,
+          "sha256": null,
+          "reviewedAt": null
+        }
+      }
+    ],
+    "early": []
+  }
+}

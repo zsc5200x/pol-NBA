@@ -1,0 +1,832 @@
+{
+  "status": "success",
+  "response": {
+    "GAMES": {
+      "GAME9": {
+        "IS_MASTER": "N",
+        "GID": "10635251",
+        "TEAM_C": "克里夫兰骑士",
+        "TEAM_H": "费城76人",
+        "LEAGUE_ID": "100828",
+        "MS": "10635249_2",
+        "GIDM": "1540749",
+        "IS_RB": "N",
+        "DATETIME": "2026-10-22 19:00:00",
+        "LEAGUE": "NBA美国职业篮球联赛",
+        "PLAYS": {
+          "R": {
+            "SW_R": "Y",
+            "RATIO_R": "",
+            "IOR_RC": "0",
+            "IOR_RH": "0"
+          },
+          "OUH": {
+            "RATIO_OUHU": "",
+            "IOR_OUHU": "0",
+            "SW_OUH": "Y",
+            "RATIO_OUHO": "",
+            "IOR_OUHO": "0"
+          },
+          "OU": {
+            "RATIO_OUU": "",
+            "IOR_OUH": "0",
+            "SW_OU": "Y",
+            "RATIO_OUO": "",
+            "IOR_OUC": "0"
+          },
+          "WM": {
+            "IOR_WMBCOV": "0",
+            "IOR_WMBHOV": "0",
+            "IOR_WMBOT": "0",
+            "SW_WM": "N",
+            "IOR_WMBH1": "0",
+            "IOR_WMBC1": "0"
+          },
+          "EO": {
+            "IOR_EOO": "0",
+            "IOR_EOE": "0",
+            "SW_EO": "N"
+          },
+          "OUC": {
+            "RATIO_OUCU": "",
+            "IOR_OUCU": "0",
+            "RATIO_OUCO": "",
+            "SW_OUC": "Y",
+            "IOR_OUCO": "0"
+          },
+          "M": {
+            "SW_M": "N",
+            "IOR_MC": "0",
+            "IOR_MH": "0"
+          }
+        },
+        "GOPEN": "N",
+        "STRONG": "H"
+      },
+      "GAME8": {
+        "IS_MASTER": "N",
+        "GID": "10635250",
+        "TEAM_C": "克里夫兰骑士",
+        "TEAM_H": "费城76人",
+        "LEAGUE_ID": "100828",
+        "MS": "10635249_1",
+        "GIDM": "1540749",
+        "IS_RB": "N",
+        "DATETIME": "2026-10-22 19:00:00",
+        "LEAGUE": "NBA美国职业篮球联赛",
+        "PLAYS": {
+          "R": {
+            "SW_R": "Y",
+            "RATIO_R": "",
+            "IOR_RC": "0",
+            "IOR_RH": "0"
+          },
+          "OUH": {
+            "RATIO_OUHU": "",
+            "IOR_OUHU": "0",
+            "SW_OUH": "Y",
+            "RATIO_OUHO": "",
+            "IOR_OUHO": "0"
+          },
+          "OU": {
+            "RATIO_OUU": "",
+            "IOR_OUH": "0",
+            "SW_OU": "Y",
+            "RATIO_OUO": "",
+            "IOR_OUC": "0"
+          },
+          "WM": {
+            "IOR_WMBCOV": "0",
+            "IOR_WMBHOV": "0",
+            "IOR_WMBOT": "0",
+            "SW_WM": "N",
+            "IOR_WMBH1": "0",
+            "IOR_WMBC1": "0"
+          },
+          "EO": {
+            "IOR_EOO": "0",
+            "IOR_EOE": "0",
+            "SW_EO": "N"
+          },
+          "OUC": {
+            "RATIO_OUCU": "",
+            "IOR_OUCU": "0",
+            "RATIO_OUCO": "",
+            "SW_OUC": "Y",
+            "IOR_OUCO": "0"
+          },
+          "M": {
+            "SW_M": "N",
+            "IOR_MC": "0",
+            "IOR_MH": "0"
+          }
+        },
+        "GOPEN": "N",
+        "STRONG": "H"
+      },
+      "GAME7": {
+        "IS_MASTER": "N",
+        "GID": "10635249",
+        "TEAM_C": "克里夫兰骑士",
+        "TEAM_H": "费城76人",
+        "LEAGUE_ID": "100828",
+        "MS": "",
+        "GIDM": "1540749",
+        "IS_RB": "N",
+        "DATETIME": "2026-10-22 19:00:00",
+        "LEAGUE": "NBA美国职业篮球联赛",
+        "PLAYS": {
+          "R": {
+            "SW_R": "Y",
+            "RATIO_R": "4.5",
+            "IOR_RC": "0.780",
+            "IOR_RH": "1.080"
+          },
+          "OUH": {
+            "RATIO_OUHU": "",
+            "IOR_OUHU": "0",
+            "SW_OUH": "N",
+            "RATIO_OUHO": "",
+            "IOR_OUHO": "0"
+          },
+          "OU": {
+            "RATIO_OUU": "234.5",
+            "IOR_OUH": "1.020",
+            "SW_OU": "Y",
+            "RATIO_OUO": "234.5",
+            "IOR_OUC": "0.820"
+          },
+          "WM": {
+            "IOR_WMAC4": "0",
+            "IOR_WMAC3": "0",
+            "IOR_WMAC5": "0",
+            "IOR_WMACOV": "0",
+            "IOR_WMAHOV": "0",
+            "IOR_WMAH1": "0",
+            "IOR_WMAH3": "0",
+            "SW_WM": "N",
+            "IOR_WMAH2": "0",
+            "IOR_WMAH5": "0",
+            "IOR_WMAH4": "0",
+            "IOR_WMAC2": "0",
+            "IOR_WMAC1": "0"
+          },
+          "EO": {
+            "IOR_EOO": "0",
+            "IOR_EOE": "0",
+            "SW_EO": "N"
+          },
+          "OUC": {
+            "RATIO_OUCU": "",
+            "IOR_OUCU": "0",
+            "RATIO_OUCO": "",
+            "SW_OUC": "N",
+            "IOR_OUCO": "0"
+          },
+          "M": {
+            "SW_M": "N",
+            "IOR_MC": "0",
+            "IOR_MH": "0"
+          }
+        },
+        "GOPEN": "Y",
+        "STRONG": "H"
+      },
+      "GAME6": {
+        "IS_MASTER": "N",
+        "GID": "10635248",
+        "TEAM_C": "克里夫兰骑士",
+        "TEAM_H": "费城76人",
+        "LEAGUE_ID": "100828",
+        "MS": "10635242_6",
+        "GIDM": "1540749",
+        "IS_RB": "N",
+        "DATETIME": "2026-10-22 19:00:00",
+        "LEAGUE": "NBA美国职业篮球联赛",
+        "PLAYS": {
+          "R": {
+            "SW_R": "Y",
+            "RATIO_R": "",
+            "IOR_RC": "0",
+            "IOR_RH": "0"
+          },
+          "OUH": {
+            "RATIO_OUHU": "",
+            "IOR_OUHU": "0",
+            "SW_OUH": "Y",
+            "RATIO_OUHO": "",
+            "IOR_OUHO": "0"
+          },
+          "OU": {
+            "RATIO_OUU": "",
+            "IOR_OUH": "0",
+            "SW_OU": "Y",
+            "RATIO_OUO": "",
+            "IOR_OUC": "0"
+          },
+          "WM": {
+            "IOR_WMCCOV": "0",
+            "IOR_WMCOT": "0",
+            "IOR_WMCHOV": "0",
+            "SW_WM": "Y"
+          },
+          "EO": {
+            "IOR_EOO": "0",
+            "IOR_EOE": "0",
+            "SW_EO": "Y"
+          },
+          "OUC": {
+            "RATIO_OUCU": "",
+            "IOR_OUCU": "0",
+            "RATIO_OUCO": "",
+            "SW_OUC": "Y",
+            "IOR_OUCO": "0"
+          },
+          "M": {
+            "SW_M": "N",
+            "IOR_MC": "0",
+            "IOR_MH": "0"
+          }
+        },
+        "GOPEN": "N",
+        "STRONG": "H"
+      },
+      "GAME5": {
+        "IS_MASTER": "N",
+        "GID": "10635247",
+        "TEAM_C": "克里夫兰骑士",
+        "TEAM_H": "费城76人",
+        "LEAGUE_ID": "100828",
+        "MS": "10635242_5",
+        "GIDM": "1540749",
+        "IS_RB": "N",
+        "DATETIME": "2026-10-22 19:00:00",
+        "LEAGUE": "NBA美国职业篮球联赛",
+        "PLAYS": {
+          "R": {
+            "SW_R": "Y",
+            "RATIO_R": "",
+            "IOR_RC": "0",
+            "IOR_RH": "0"
+          },
+          "OUH": {
+            "RATIO_OUHU": "",
+            "IOR_OUHU": "0",
+            "SW_OUH": "Y",
+            "RATIO_OUHO": "",
+            "IOR_OUHO": "0"
+          },
+          "OU": {
+            "RATIO_OUU": "",
+            "IOR_OUH": "0",
+            "SW_OU": "Y",
+            "RATIO_OUO": "",
+            "IOR_OUC": "0"
+          },
+          "WM": {
+            "IOR_WMCCOV": "0",
+            "IOR_WMCOT": "0",
+            "IOR_WMCHOV": "0",
+            "SW_WM": "Y"
+          },
+          "EO": {
+            "IOR_EOO": "0",
+            "IOR_EOE": "0",
+            "SW_EO": "Y"
+          },
+          "OUC": {
+            "RATIO_OUCU": "",
+            "IOR_OUCU": "0",
+            "RATIO_OUCO": "",
+            "SW_OUC": "Y",
+            "IOR_OUCO": "0"
+          },
+          "M": {
+            "SW_M": "N",
+            "IOR_MC": "0",
+            "IOR_MH": "0"
+          }
+        },
+        "GOPEN": "N",
+        "STRONG": "H"
+      },
+      "GAME4": {
+        "IS_MASTER": "N",
+        "GID": "10635246",
+        "TEAM_C": "克里夫兰骑士",
+        "TEAM_H": "费城76人",
+        "LEAGUE_ID": "100828",
+        "MS": "10635242_4",
+        "GIDM": "1540749",
+        "IS_RB": "N",
+        "DATETIME": "2026-10-22 19:00:00",
+        "LEAGUE": "NBA美国职业篮球联赛",
+        "PLAYS": {
+          "R": {
+            "SW_R": "Y",
+            "RATIO_R": "",
+            "IOR_RC": "0",
+            "IOR_RH": "0"
+          },
+          "OUH": {
+            "RATIO_OUHU": "",
+            "IOR_OUHU": "0",
+            "SW_OUH": "Y",
+            "RATIO_OUHO": "",
+            "IOR_OUHO": "0"
+          },
+          "OU": {
+            "RATIO_OUU": "",
+            "IOR_OUH": "0",
+            "SW_OU": "Y",
+            "RATIO_OUO": "",
+            "IOR_OUC": "0"
+          },
+          "WM": {
+            "IOR_WMCCOV": "0",
+            "IOR_WMCOT": "0",
+            "IOR_WMCHOV": "0",
+            "SW_WM": "Y"
+          },
+          "EO": {
+            "IOR_EOO": "0",
+            "IOR_EOE": "0",
+            "SW_EO": "Y"
+          },
+          "OUC": {
+            "RATIO_OUCU": "",
+            "IOR_OUCU": "0",
+            "RATIO_OUCO": "",
+            "SW_OUC": "Y",
+            "IOR_OUCO": "0"
+          },
+          "M": {
+            "SW_M": "N",
+            "IOR_MC": "0",
+            "IOR_MH": "0"
+          }
+        },
+        "GOPEN": "N",
+        "STRONG": "H"
+      },
+      "GAME3": {
+        "IS_MASTER": "N",
+        "GID": "10635245",
+        "TEAM_C": "克里夫兰骑士",
+        "TEAM_H": "费城76人",
+        "LEAGUE_ID": "100828",
+        "MS": "10635242_3",
+        "GIDM": "1540749",
+        "IS_RB": "N",
+        "DATETIME": "2026-10-22 19:00:00",
+        "LEAGUE": "NBA美国职业篮球联赛",
+        "PLAYS": {
+          "R": {
+            "SW_R": "Y",
+            "RATIO_R": "",
+            "IOR_RC": "0",
+            "IOR_RH": "0"
+          },
+          "OUH": {
+            "RATIO_OUHU": "",
+            "IOR_OUHU": "0",
+            "SW_OUH": "Y",
+            "RATIO_OUHO": "",
+            "IOR_OUHO": "0"
+          },
+          "OU": {
+            "RATIO_OUU": "",
+            "IOR_OUH": "0",
+            "SW_OU": "Y",
+            "RATIO_OUO": "",
+            "IOR_OUC": "0"
+          },
+          "WM": {
+            "IOR_WMCCOV": "0",
+            "IOR_WMCOT": "0",
+            "IOR_WMCHOV": "0",
+            "SW_WM": "Y"
+          },
+          "EO": {
+            "IOR_EOO": "0",
+            "IOR_EOE": "0",
+            "SW_EO": "Y"
+          },
+          "OUC": {
+            "RATIO_OUCU": "",
+            "IOR_OUCU": "0",
+            "RATIO_OUCO": "",
+            "SW_OUC": "Y",
+            "IOR_OUCO": "0"
+          },
+          "M": {
+            "SW_M": "N",
+            "IOR_MC": "0",
+            "IOR_MH": "0"
+          }
+        },
+        "GOPEN": "N",
+        "STRONG": "H"
+      },
+      "GAME2": {
+        "IS_MASTER": "N",
+        "GID": "10635244",
+        "TEAM_C": "克里夫兰骑士",
+        "TEAM_H": "费城76人",
+        "LEAGUE_ID": "100828",
+        "MS": "10635242_2",
+        "GIDM": "1540749",
+        "IS_RB": "N",
+        "DATETIME": "2026-10-22 19:00:00",
+        "LEAGUE": "NBA美国职业篮球联赛",
+        "PLAYS": {
+          "R": {
+            "SW_R": "Y",
+            "RATIO_R": "",
+            "IOR_RC": "0",
+            "IOR_RH": "0"
+          },
+          "OUH": {
+            "RATIO_OUHU": "",
+            "IOR_OUHU": "0",
+            "SW_OUH": "Y",
+            "RATIO_OUHO": "",
+            "IOR_OUHO": "0"
+          },
+          "OU": {
+            "RATIO_OUU": "",
+            "IOR_OUH": "0",
+            "SW_OU": "Y",
+            "RATIO_OUO": "",
+            "IOR_OUC": "0"
+          },
+          "WM": {
+            "IOR_WMBCOV": "0",
+            "IOR_WMBHOV": "0",
+            "IOR_WMBOT": "0",
+            "SW_WM": "Y",
+            "IOR_WMBH1": "0",
+            "IOR_WMBC1": "0"
+          },
+          "EO": {
+            "IOR_EOO": "0",
+            "IOR_EOE": "0",
+            "SW_EO": "Y"
+          },
+          "OUC": {
+            "RATIO_OUCU": "",
+            "IOR_OUCU": "0",
+            "RATIO_OUCO": "",
+            "SW_OUC": "Y",
+            "IOR_OUCO": "0"
+          },
+          "M": {
+            "SW_M": "N",
+            "IOR_MC": "0",
+            "IOR_MH": "0"
+          }
+        },
+        "GOPEN": "N",
+        "STRONG": "H"
+      },
+      "GAME10": {
+        "IS_MASTER": "N",
+        "GID": "10635256",
+        "TEAM_C": "克里夫兰骑士",
+        "TEAM_H": "费城76人",
+        "LEAGUE_ID": "100828",
+        "MS": "",
+        "GIDM": "1540749",
+        "IS_RB": "N",
+        "DATETIME": "2026-10-22 19:00:00",
+        "LEAGUE": "NBA美国职业篮球联赛",
+        "PLAYS": {
+          "R": {
+            "SW_R": "Y",
+            "RATIO_R": "2.5",
+            "IOR_RC": "1.080",
+            "IOR_RH": "0.780"
+          },
+          "OUH": {
+            "RATIO_OUHU": "",
+            "IOR_OUHU": "0",
+            "SW_OUH": "N",
+            "RATIO_OUHO": "",
+            "IOR_OUHO": "0"
+          },
+          "OU": {
+            "RATIO_OUU": "236.5",
+            "IOR_OUH": "0.820",
+            "SW_OU": "Y",
+            "RATIO_OUO": "236.5",
+            "IOR_OUC": "1.020"
+          },
+          "WM": {
+            "IOR_WMAC4": "0",
+            "IOR_WMAC3": "0",
+            "IOR_WMAC5": "0",
+            "IOR_WMACOV": "0",
+            "IOR_WMAHOV": "0",
+            "IOR_WMAH1": "0",
+            "IOR_WMAH3": "0",
+            "SW_WM": "N",
+            "IOR_WMAH2": "0",
+            "IOR_WMAH5": "0",
+            "IOR_WMAH4": "0",
+            "IOR_WMAC2": "0",
+            "IOR_WMAC1": "0"
+          },
+          "EO": {
+            "IOR_EOO": "0",
+            "IOR_EOE": "0",
+            "SW_EO": "N"
+          },
+          "OUC": {
+            "RATIO_OUCU": "",
+            "IOR_OUCU": "0",
+            "RATIO_OUCO": "",
+            "SW_OUC": "N",
+            "IOR_OUCO": "0"
+          },
+          "M": {
+            "SW_M": "N",
+            "IOR_MC": "0",
+            "IOR_MH": "0"
+          }
+        },
+        "GOPEN": "Y",
+        "STRONG": "H"
+      },
+      "GAME11": {
+        "IS_MASTER": "N",
+        "GID": "10635257",
+        "TEAM_C": "克里夫兰骑士",
+        "TEAM_H": "费城76人",
+        "LEAGUE_ID": "100828",
+        "MS": "10635256_1",
+        "GIDM": "1540749",
+        "IS_RB": "N",
+        "DATETIME": "2026-10-22 19:00:00",
+        "LEAGUE": "NBA美国职业篮球联赛",
+        "PLAYS": {
+          "R": {
+            "SW_R": "Y",
+            "RATIO_R": "",
+            "IOR_RC": "0",
+            "IOR_RH": "0"
+          },
+          "OUH": {
+            "RATIO_OUHU": "",
+            "IOR_OUHU": "0",
+            "SW_OUH": "Y",
+            "RATIO_OUHO": "",
+            "IOR_OUHO": "0"
+          },
+          "OU": {
+            "RATIO_OUU": "",
+            "IOR_OUH": "0",
+            "SW_OU": "Y",
+            "RATIO_OUO": "",
+            "IOR_OUC": "0"
+          },
+          "WM": {
+            "IOR_WMBCOV": "0",
+            "IOR_WMBHOV": "0",
+            "IOR_WMBOT": "0",
+            "SW_WM": "N",
+            "IOR_WMBH1": "0",
+            "IOR_WMBC1": "0"
+          },
+          "EO": {
+            "IOR_EOO": "0",
+            "IOR_EOE": "0",
+            "SW_EO": "N"
+          },
+          "OUC": {
+            "RATIO_OUCU": "",
+            "IOR_OUCU": "0",
+            "RATIO_OUCO": "",
+            "SW_OUC": "Y",
+            "IOR_OUCO": "0"
+          },
+          "M": {
+            "SW_M": "N",
+            "IOR_MC": "0",
+            "IOR_MH": "0"
+          }
+        },
+        "GOPEN": "N",
+        "STRONG": "H"
+      },
+      "GAME12": {
+        "IS_MASTER": "N",
+        "GID": "10635258",
+        "TEAM_C": "克里夫兰骑士",
+        "TEAM_H": "费城76人",
+        "LEAGUE_ID": "100828",
+        "MS": "10635256_2",
+        "GIDM": "1540749",
+        "IS_RB": "N",
+        "DATETIME": "2026-10-22 19:00:00",
+        "LEAGUE": "NBA美国职业篮球联赛",
+        "PLAYS": {
+          "R": {
+            "SW_R": "Y",
+            "RATIO_R": "",
+            "IOR_RC": "0",
+            "IOR_RH": "0"
+          },
+          "OUH": {
+            "RATIO_OUHU": "",
+            "IOR_OUHU": "0",
+            "SW_OUH": "Y",
+            "RATIO_OUHO": "",
+            "IOR_OUHO": "0"
+          },
+          "OU": {
+            "RATIO_OUU": "",
+            "IOR_OUH": "0",
+            "SW_OU": "Y",
+            "RATIO_OUO": "",
+            "IOR_OUC": "0"
+          },
+          "WM": {
+            "IOR_WMBCOV": "0",
+            "IOR_WMBHOV": "0",
+            "IOR_WMBOT": "0",
+            "SW_WM": "N",
+            "IOR_WMBH1": "0",
+            "IOR_WMBC1": "0"
+          },
+          "EO": {
+            "IOR_EOO": "0",
+            "IOR_EOE": "0",
+            "SW_EO": "N"
+          },
+          "OUC": {
+            "RATIO_OUCU": "",
+            "IOR_OUCU": "0",
+            "RATIO_OUCO": "",
+            "SW_OUC": "Y",
+            "IOR_OUCO": "0"
+          },
+          "M": {
+            "SW_M": "N",
+            "IOR_MC": "0",
+            "IOR_MH": "0"
+          }
+        },
+        "GOPEN": "N",
+        "STRONG": "H"
+      },
+      "GAME1": {
+        "IS_MASTER": "N",
+        "GID": "10635243",
+        "TEAM_C": "克里夫兰骑士",
+        "TEAM_H": "费城76人",
+        "LEAGUE_ID": "100828",
+        "MS": "10635242_1",
+        "GIDM": "1540749",
+        "IS_RB": "N",
+        "DATETIME": "2026-10-22 19:00:00",
+        "LEAGUE": "NBA美国职业篮球联赛",
+        "PLAYS": {
+          "R": {
+            "SW_R": "Y",
+            "RATIO_R": "",
+            "IOR_RC": "0",
+            "IOR_RH": "0"
+          },
+          "OUH": {
+            "RATIO_OUHU": "",
+            "IOR_OUHU": "0",
+            "SW_OUH": "Y",
+            "RATIO_OUHO": "",
+            "IOR_OUHO": "0"
+          },
+          "OU": {
+            "RATIO_OUU": "",
+            "IOR_OUH": "0",
+            "SW_OU": "Y",
+            "RATIO_OUO": "",
+            "IOR_OUC": "0"
+          },
+          "WM": {
+            "IOR_WMBCOV": "0",
+            "IOR_WMBHOV": "0",
+            "IOR_WMBOT": "0",
+            "SW_WM": "Y",
+            "IOR_WMBH1": "0",
+            "IOR_WMBC1": "0"
+          },
+          "EO": {
+            "IOR_EOO": "0",
+            "IOR_EOE": "0",
+            "SW_EO": "Y"
+          },
+          "OUC": {
+            "RATIO_OUCU": "",
+            "IOR_OUCU": "0",
+            "RATIO_OUCO": "",
+            "SW_OUC": "Y",
+            "IOR_OUCO": "0"
+          },
+          "M": {
+            "SW_M": "N",
+            "IOR_MC": "0",
+            "IOR_MH": "0"
+          }
+        },
+        "GOPEN": "N",
+        "STRONG": "H"
+      },
+      "GAME0": {
+        "IS_MASTER": "Y",
+        "SE_TYPE": "Quarters",
+        "LEAGUE_ID": "100828",
+        "GIDM": "1540749",
+        "IS_RB": "N",
+        "SE_NOW": "Q1",
+        "PLAYS": {
+          "R": {
+            "SW_R": "Y",
+            "RATIO_R": "3.5",
+            "IOR_RC": "0.930",
+            "IOR_RH": "0.930"
+          },
+          "OUH": {
+            "RATIO_OUHU": "119.5",
+            "IOR_OUHU": "0.940",
+            "SW_OUH": "Y",
+            "RATIO_OUHO": "119.5",
+            "IOR_OUHO": "0.900"
+          },
+          "PD": {
+            "IOR_PDH0": "4.5",
+            "SW_PD": "Y",
+            "IOR_PDC4": "4.5",
+            "IOR_PDC3": "4.5",
+            "IOR_PDC2": "4.5",
+            "IOR_PDC1": "4.5",
+            "IOR_PDC0": "4.5",
+            "IOR_PDH4": "4.5",
+            "IOR_PDH3": "4.5",
+            "IOR_PDH2": "4.5",
+            "IOR_PDH1": "4.5"
+          },
+          "OU": {
+            "RATIO_OUU": "235.5",
+            "IOR_OUH": "0.920",
+            "SW_OU": "Y",
+            "RATIO_OUO": "235.5",
+            "IOR_OUC": "0.920"
+          },
+          "WM": {
+            "IOR_WMAC4": "0",
+            "IOR_WMAC3": "0",
+            "IOR_WMAC5": "0",
+            "IOR_WMACOV": "0",
+            "IOR_WMAHOV": "0",
+            "IOR_WMAH1": "0",
+            "IOR_WMAH3": "0",
+            "SW_WM": "N",
+            "IOR_WMAH2": "0",
+            "IOR_WMAH5": "0",
+            "IOR_WMAH4": "0",
+            "IOR_WMAC2": "0",
+            "IOR_WMAC1": "0"
+          },
+          "EO": {
+            "IOR_EOO": "1.900",
+            "IOR_EOE": "1.900",
+            "SW_EO": "Y"
+          },
+          "OUC": {
+            "RATIO_OUCU": "115.5",
+            "IOR_OUCU": "0.950",
+            "RATIO_OUCO": "115.5",
+            "SW_OUC": "Y",
+            "IOR_OUCO": "0.890"
+          },
+          "M": {
+            "SW_M": "Y",
+            "IOR_MC": "2.350",
+            "IOR_MH": "1.620"
+          }
+        },
+        "GOPEN": "Y",
+        "GID": "10635242",
+        "TEAM_C": "克里夫兰骑士",
+        "TEAM_H": "费城76人",
+        "MS": "",
+        "DATETIME": "2026-10-22 19:00:00",
+        "LEAGUE": "NBA美国职业篮球联赛",
+        "STRONG": "H"
+      }
+    }
+  },
+  "phpData": {
+    "filter": "Main",
+    "type": "getMore"
+  }
+}

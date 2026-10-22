@@ -3,12 +3,13 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { resolve, extname } from 'node:path';
 import { Monitor } from './src/monitor.mjs';
+import { CrownMonitor } from './src/crown/monitor.mjs';
 
 const PUBLIC = fileURLToPath(new URL('./public/', import.meta.url));
-const FILES = new Map([['/', 'index.html'], ['/app.js', 'app.js'], ['/chinese.js', 'chinese.js'], ['/market-lines.js', 'market-lines.js'], ['/styles.css', 'styles.css']]);
+const FILES = new Map([['/', 'index.html'], ['/app.js', 'app.js'], ['/chinese.js', 'chinese.js'], ['/market-lines.js', 'market-lines.js'], ['/crown.js', 'crown.js'], ['/styles.css', 'styles.css']]);
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
 
-export function createApp({ monitor = new Monitor() } = {}) {
+export function createApp({ monitor = new Monitor(), crown = new CrownMonitor({ configPath: monitor.demo ? null : process.env.CROWN_CONFIG_PATH }) } = {}) {
   const clients = new Set();
   const send = (response, state) => {
     if (response.writableLength > 2 * 1024 * 1024) { response.destroy(); return; }
@@ -22,10 +23,21 @@ export function createApp({ monitor = new Monitor() } = {}) {
     response.setHeader('Referrer-Policy', 'no-referrer');
     response.setHeader('Content-Security-Policy', "default-src 'self'; connect-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-ancestors 'none'");
     const json = (status, payload) => { response.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); response.end(JSON.stringify(payload)); };
+    if (request.method === 'GET' && url.pathname === '/api/crown/captures') { json(200, await crown.captures()); return; }
+    if (request.method === 'GET' && url.pathname === '/api/crown') {
+      const type = url.searchParams.get('type'); const source = url.searchParams.get('source');
+      if ((type && !['moneyline','spreads','totals'].includes(type)) || (source && !['today','early'].includes(source))) { json(400, { error: '筛选条件无效' }); return; }
+      json(200, crown.snapshot(monitor.snapshot(), { type, source, matchId: url.searchParams.get('matchId') })); return;
+    }
+    if (request.method === 'GET' && url.pathname === '/api/crown/history') {
+      const id = url.searchParams.get('matchId');
+      if (!id || id.length > 100) { json(400, { error: '需要比赛标识' }); return; }
+      json(200, { matchId: id, history: crown.store.history(id) }); return;
+    }
     if (request.method === 'GET' && url.pathname === '/api/state') { json(200, monitor.snapshot()); return; }
     if (request.method === 'GET' && url.pathname === '/api/health') {
       const state = monitor.snapshot();
-      json(200, { server: 'ok', mode: state.mode, upstream: state.status, events: state.events.length, books: Object.keys(state.books).length });
+      json(200, { server: 'ok', mode: state.mode, upstream: state.status, events: state.events.length, books: Object.keys(state.books).length, crown: crown.state.status });
       return;
     }
     if (request.method === 'GET' && url.pathname === '/api/stream') {
@@ -67,7 +79,8 @@ export function createApp({ monitor = new Monitor() } = {}) {
   const heartbeat = setInterval(() => { for (const response of clients) response.write(': heartbeat\n\n'); }, 15000);
   heartbeat.unref();
   server.on('close', () => { clearInterval(heartbeat); monitor.off('state', broadcast); });
-  return { server, monitor, close: () => { monitor.stop(); for (const client of clients) client.end(); server.close(); } };
+  server.on('listening', () => crown.start());
+  return { server, monitor, crown, close: () => { monitor.stop(); for (const client of clients) client.end(); void crown.stop().finally(() => server.close()); } };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
