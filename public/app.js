@@ -1,3 +1,5 @@
+import { eventTeams, eventTitle, marketTitle, outcomeTitle, typeName, errorMessage, timezoneName } from './chinese.js';
+
 const $ = (selector) => document.querySelector(selector);
 const nodes = Object.fromEntries(['connection', 'mode-label', 'clock', 'timezone-label', 'update-label', 'timezone', 'notice', 'stat-events', 'stat-markets', 'stat-spread', 'stat-depth', 'date-range', 'game-count', 'games', 'match-heading', 'market-types', 'markets', 'market-link', 'book-mode', 'book-selection', 'book-summary', 'book', 'book-footnote'].map(id => [id, document.getElementById(id)]));
 
@@ -8,18 +10,57 @@ let selectedType = 'all';
 let transportConnected = false;
 let settingsPending = false;
 let localError = null;
-const typeNames = { moneyline: '胜负', spreads: '让分', spread: '让分', totals: '大小分', total: '大小分', basketball_team_to_score_first: '首个得分球队', basketball_odd_even: '总分单双', points: '球员得分', rebounds: '球员篮板', assists: '球员助攻', first_half_spreads: '半场让分', first_half_totals: '半场大小分', first_half_moneyline: '半场胜负', threes: '三分球', blocks: '盖帽', steals: '抢断', double_double: '两双', triple_double: '三双' };
+let gamesSignature = null;
+let renderedMarketEvent = null;
 const primaryTypes = new Set(['moneyline', 'spreads', 'spread', 'totals', 'total']);
-const typeName = (value) => typeNames[value] || value || '其他';
 const money = (value, digits = 0) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: digits }).format(value);
 const number = (value, digits = 0) => new Intl.NumberFormat('en-US', { maximumFractionDigits: digits }).format(value);
-const cents = (value) => Number.isFinite(value) ? `${number(value * 100, 2)}¢` : '—';
+const cents = (value) => Number.isFinite(value) ? `${number(value * 100, 2)} 分` : '—';
 
 function el(tag, className = '', text = '') {
   const result = document.createElement(tag);
   if (className) result.className = className;
   if (text !== '') result.textContent = text;
   return result;
+}
+
+function teamBadge(team, size = 'small') {
+  const badge = el('span', `team-badge ${size}`);
+  badge.style.setProperty('--team-color', team.color);
+  badge.append(el('span', 'team-fallback', team.short.slice(0, 2)));
+  const image = document.createElement('img');
+  image.src = `/logos/${team.id}.svg`;
+  image.alt = `${team.name}队徽`;
+  image.width = 72; image.height = 72;
+  image.decoding = 'async';
+  image.addEventListener('error', () => image.remove(), { once: true });
+  badge.append(image);
+  return badge;
+}
+
+function gameTeams(event) {
+  const teams = eventTeams(event);
+  const group = el('span', 'game-teams');
+  if (!teams.length) { group.append(el('strong', 'game-title', eventTitle(event))); return group; }
+  for (const team of teams) {
+    const row = el('span', 'game-team-row');
+    row.append(teamBadge(team), el('strong', '', team.name));
+    group.append(row);
+  }
+  return group;
+}
+
+function matchup(event) {
+  const group = el('div', 'matchup');
+  const teams = eventTeams(event);
+  if (!teams.length) { group.append(el('strong', '', eventTitle(event))); return group; }
+  teams.forEach((team, index) => {
+    if (index) group.append(el('span', 'matchup-versus', '对阵'));
+    const side = el('div', 'matchup-team');
+    side.append(teamBadge(team, 'large'), el('strong', '', team.name));
+    group.append(side);
+  });
+  return group;
 }
 
 function date(value, options) {
@@ -71,7 +112,7 @@ function status() {
   nodes.connection.replaceChildren(el('i'), el('span', '', demo ? '演示模式' : healthy ? state?.stream?.connected ? '实时推送' : '3 秒行情快照' : state?.status === 'degraded' && transportConnected && !stale ? '部分行情异常' : state ? '行情连接异常' : '正在连接'));
   nodes['mode-label'].textContent = demo ? '模拟数据 / 非真实行情' : '只读行情';
   nodes['update-label'].textContent = verifiedAt ? `行情核验于 ${date(verifiedAt, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}${stale ? ' · 已过期' : ''}` : '尚无有效行情';
-  const message = settingsPending ? '正在切换筛选条件…' : localError || state?.error || (demo ? '当前为演示模式：所有比赛与订单簿均为模拟数据，用于体验界面，不能用于交易判断。' : !transportConnected && state ? '页面行情通道已断开，正在重连。显示的是最近收到的数据，请留意核验时间。' : stale ? '行情已超过 30 秒未完成有效核验，显示的是上次收到的数据。' : '');
+  const message = settingsPending ? '正在切换筛选条件…' : errorMessage(localError || state?.error) || (demo ? '当前为演示模式：所有比赛与订单簿均为模拟数据，用于体验界面，不能用于交易判断。' : !transportConnected && state ? '页面行情通道已断开，正在重连。显示的是最近收到的数据，请留意核验时间。' : stale ? '行情已超过 30 秒未完成有效核验，显示的是上次收到的数据。' : '');
   nodes.notice.textContent = message;
   nodes.notice.className = `notice ${!message ? 'hidden' : demo && !state?.error ? 'demo-notice' : ''}`;
   const currentTime = new Date();
@@ -79,9 +120,15 @@ function status() {
 }
 
 function renderGames() {
+  const signature = JSON.stringify([state.timezone, selectedEvent, state.error,
+    state.events.map(event => [event.id, event.title, event.startTime, event.markets.length])]);
+  if (signature === gamesSignature) return;
+  gamesSignature = signature;
+  const scrollTop = nodes.games.scrollTop;
+  const scrollLeft = nodes.games.scrollLeft;
   nodes.games.replaceChildren();
   if (!state.events.length) {
-    nodes.games.append(empty('暂无比赛', state.error ? '暂时无法获取赛程。请检查网络配置，程序会自动重试。' : '这个时间范围内没有可展示的 NBA 比赛。可以试试其他时间范围。', '◷'));
+    nodes.games.append(empty('暂无比赛', state.error ? '暂时无法获取赛程。请检查网络配置，程序会自动重试。' : '这个时间范围内没有可展示的美职篮比赛。可以试试其他时间范围。', '◷'));
     return;
   }
   let previousDay = null;
@@ -96,14 +143,18 @@ function renderGames() {
     button.setAttribute('aria-pressed', String(selectedEvent === event.id));
     const gameMeta = el('div', 'game-meta');
     gameMeta.append(el('span', 'game-time mono', date(event.startTime, { hour: '2-digit', minute: '2-digit', hour12: false })), el('span', 'game-market-count', `${event.markets.length} 个盘口`));
-    button.append(el('span', 'game-day-mobile', date(event.startTime, { month: 'numeric', day: 'numeric', weekday: 'short' })), gameMeta, el('strong', 'game-title', event.title), el('span', 'game-arrow', '↗'));
+    button.append(el('span', 'game-day-mobile', date(event.startTime, { month: 'numeric', day: 'numeric', weekday: 'short' })), gameMeta, gameTeams(event), el('span', 'game-arrow', '↗'));
     button.addEventListener('click', () => { selectedEvent = event.id; selectedToken = preferredOutcome(event); selectedType = 'all'; render(); });
     nodes.games.append(button);
   }
+  nodes.games.scrollTop = scrollTop;
+  nodes.games.scrollLeft = scrollLeft;
 }
 
 function renderMarkets() {
   const game = activeGame();
+  const scrollTop = renderedMarketEvent === game?.id ? nodes.markets.scrollTop : 0;
+  renderedMarketEvent = game?.id;
   nodes['match-heading'].replaceChildren();
   nodes['market-types'].replaceChildren();
   nodes.markets.replaceChildren();
@@ -112,7 +163,7 @@ function renderMarkets() {
     nodes.markets.append(empty('等待赛程', '获得比赛后，这里会列出可用盘口及各结果报价。', '◈'));
     return;
   }
-  nodes['match-heading'].append(el('div', 'eyebrow', 'NBA · GAME MARKETS'), el('h3', '', game.title), el('p', '', date(game.startTime, { month: 'long', day: 'numeric', weekday: 'long', hour: '2-digit', minute: '2-digit', hour12: false })));
+  nodes['match-heading'].append(el('div', 'eyebrow', '美职篮 · 比赛盘口'), el('h3', 'sr-only', eventTitle(game)), matchup(game), el('p', 'match-date', date(game.startTime, { month: 'long', day: 'numeric', weekday: 'long', hour: '2-digit', minute: '2-digit', hour12: false })));
   if (typeof game.slug === 'string' && /^[a-zA-Z0-9_-]+$/.test(game.slug)) {
     nodes['market-link'].href = `https://polymarket.com/event/${encodeURIComponent(game.slug)}`;
     nodes['market-link'].classList.remove('hidden');
@@ -124,6 +175,7 @@ function renderMarkets() {
     button.type = 'button';
     button.addEventListener('click', () => {
       selectedType = type;
+      nodes.markets.scrollTop = 0;
       if (type !== 'all' && selectedOutcome()?.market.type !== type) selectedToken = game.markets.find(market => market.type === type)?.outcomes[0]?.tokenId || null;
       renderMarkets(); renderBook(); renderStats();
     });
@@ -133,7 +185,7 @@ function renderMarkets() {
     const card = el('article', 'market-card');
     const heading = el('div', 'market-card-heading');
     heading.append(el('span', 'market-type-label', typeName(market.type)), el('span', market.acceptingOrders ? 'market-open' : 'market-closed', market.closed ? '已结束 / 已结算' : market.acceptingOrders ? '接受挂单' : '暂停挂单'));
-    card.append(heading, el('h4', '', market.question));
+    card.append(heading, el('h4', '', marketTitle(market, game)));
     const outcomes = el('div', 'outcomes');
     for (const outcome of market.outcomes) {
       const quote = quotes(outcome.tokenId);
@@ -141,10 +193,10 @@ function renderMarkets() {
       button.type = 'button';
       button.setAttribute('aria-pressed', String(selectedToken === outcome.tokenId));
       const top = el('div', 'outcome-top');
-      top.append(el('span', 'outcome-name', outcome.name), el('span', 'outcome-check', selectedToken === outcome.tokenId ? '●' : '○'));
+      top.append(el('span', 'outcome-name', outcomeTitle(outcome, market)), el('span', 'outcome-check', selectedToken === outcome.tokenId ? '●' : '○'));
       const prices = el('div', 'quote-prices');
-      const buy = el('div'); buy.append(el('small', '', '买入价 / Ask'), el('strong', 'ask-color mono', cents(quote.ask)));
-      const sell = el('div'); sell.append(el('small', '', '卖出价 / Bid'), el('strong', 'bid-color mono', cents(quote.bid)));
+      const buy = el('div'); buy.append(el('small', '', '买入价（卖一）'), el('strong', 'ask-color mono', cents(quote.ask)));
+      const sell = el('div'); sell.append(el('small', '', '卖出价（买一）'), el('strong', 'bid-color mono', cents(quote.bid)));
       prices.append(buy, sell);
       button.append(top, prices);
       if (market.closed) button.append(el('small', 'quote-warning', '历史盘口 · 无可交易报价'));
@@ -156,6 +208,7 @@ function renderMarkets() {
     card.append(outcomes);
     nodes.markets.append(card);
   }
+  nodes.markets.scrollTop = scrollTop;
 }
 
 function renderStats() {
@@ -165,7 +218,7 @@ function renderStats() {
   nodes['stat-spread'].textContent = quote.ask !== null && quote.bid !== null ? cents(quote.ask - quote.bid) : '—';
   const depth = [...quote.bids, ...quote.asks].reduce((total, level) => total + level.price * level.size, 0);
   nodes['stat-depth'].textContent = quote.book ? money(depth) : '—';
-  nodes['game-count'].textContent = `${state.events.length} GAMES`;
+  nodes['game-count'].textContent = `${state.events.length} 场比赛`;
   nodes['date-range'].textContent = ({ upcoming: '今天及未来两天', past: '今天及过去两天', both: '前两天至后两天 · 共 5 天' })[state.range] || '按所选时区筛选';
 }
 
@@ -196,8 +249,8 @@ function renderBook() {
   }
   const { market, outcome } = selection;
   const quote = quotes(outcome.tokenId);
-  nodes['book-selection'].append(el('span', 'market-type-label', typeName(market.type)), el('h3', '', outcome.name), el('p', '', market.question));
-  nodes['book-mode'].textContent = state.mode === 'demo' ? 'SIMULATED DATA' : 'LIMIT ORDER BOOK';
+  nodes['book-selection'].append(el('span', 'market-type-label', typeName(market.type)), el('h3', '', outcomeTitle(outcome, market)), el('p', '', marketTitle(market, activeGame())));
+  nodes['book-mode'].textContent = state.mode === 'demo' ? '模拟行情' : '实时买卖挂单';
   if (!quote.book) {
     nodes.book.append(empty(market.closed ? '历史盘口已结束' : '正在获取深度', market.closed ? '已结束或已结算的盘口不提供当前可交易订单簿。' : '订单簿加载后将显示各价位挂单与累计深度。', '≋'));
     nodes['book-footnote'].textContent = market.closed ? '此处不将结算价格作为买卖报价展示' : '等待订单簿快照';
@@ -206,17 +259,17 @@ function renderBook() {
   const spreadBox = el('div'); spreadBox.append(el('small', '', '买卖价差'), el('strong', 'mono', quote.ask !== null && quote.bid !== null ? cents(quote.ask - quote.bid) : '—'));
   const midBox = el('div'); midBox.append(el('small', '', '中间价'), el('strong', 'mono', quote.ask !== null && quote.bid !== null ? cents((quote.ask + quote.bid) / 2) : '—'));
   nodes['book-summary'].append(spreadBox, midBox);
-  if (quote.book.error) nodes.book.append(el('div', 'book-error', quote.book.error));
+  if (quote.book.error) nodes.book.append(el('div', 'book-error', errorMessage(quote.book.error)));
   if (!quote.asks.length && !quote.bids.length) nodes.book.append(empty('暂无挂单', '该结果当前没有可展示的买卖订单。', '≋'));
   else {
     const heading = el('div', 'book-row book-table-heading');
     heading.append(el('span', '', '价格'), el('span', '', '份额'), el('span', '', '累计份额'), el('span', '', '累计金额'));
     nodes.book.append(heading);
     const maxDepth = Math.max(quote.bids.slice(0, 12).reduce((sum, level) => sum + level.size, 0), quote.asks.slice(0, 12).reduce((sum, level) => sum + level.size, 0));
-    nodes.book.append(el('div', 'side-label ask-color', `卖单 ASK · ${quote.asks.length} 档`));
+    nodes.book.append(el('div', 'side-label ask-color', `卖方挂单 · ${quote.asks.length} 档`));
     nodes.book.append(quote.asks.length ? orderRows(quote.asks, 'asks', maxDepth) : el('div', 'no-side', '暂无卖单'));
-    const separator = el('div', 'book-divider'); separator.append(el('span', '', 'SPREAD'), el('strong', 'mono', quote.ask !== null && quote.bid !== null ? cents(quote.ask - quote.bid) : '—')); nodes.book.append(separator);
-    nodes.book.append(el('div', 'side-label bid-color', `买单 BID · ${quote.bids.length} 档`));
+    const separator = el('div', 'book-divider'); separator.append(el('span', '', '买卖价差'), el('strong', 'mono', quote.ask !== null && quote.bid !== null ? cents(quote.ask - quote.bid) : '—')); nodes.book.append(separator);
+    nodes.book.append(el('div', 'side-label bid-color', `买方挂单 · ${quote.bids.length} 档`));
     nodes.book.append(quote.bids.length ? orderRows(quote.bids, 'bids', maxDepth) : el('div', 'no-side', '暂无买单'));
   }
   const bookVerifiedAt = quote.book.verifiedAt || quote.book.updatedAt;
@@ -235,7 +288,7 @@ function render() {
   }
   if (!selectedOutcome()) selectedToken = preferredOutcome(activeGame());
   nodes.timezone.value = state.timezone;
-  nodes['timezone-label'].textContent = state.timezone;
+  nodes['timezone-label'].textContent = timezoneName(state.timezone);
   document.querySelectorAll('[data-range]').forEach(button => button.classList.toggle('active', button.dataset.range === state.range));
   renderGames(); renderMarkets(); renderBook(); renderStats(); status();
 }
@@ -273,7 +326,7 @@ document.querySelectorAll('[data-range]').forEach(button => button.addEventListe
 nodes.timezone.addEventListener('change', () => updateSettings({ timezone: nodes.timezone.value }));
 
 async function init() {
-  nodes.games.append(empty('正在获取比赛', '连接 Polymarket，读取 NBA 赛程与可用市场。', '◷'));
+  nodes.games.append(empty('正在获取比赛', '正在读取预测市场的美职篮赛程与盘口。', '◷'));
   try {
     const response = await fetch('/api/state');
     if (!response.ok) throw new Error(`服务响应 ${response.status}`);

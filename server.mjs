@@ -5,8 +5,8 @@ import { resolve, extname } from 'node:path';
 import { Monitor } from './src/monitor.mjs';
 
 const PUBLIC = fileURLToPath(new URL('./public/', import.meta.url));
-const FILES = new Map([['/', 'index.html'], ['/app.js', 'app.js'], ['/styles.css', 'styles.css']]);
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
+const FILES = new Map([['/', 'index.html'], ['/app.js', 'app.js'], ['/chinese.js', 'chinese.js'], ['/styles.css', 'styles.css']]);
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
 
 export function createApp({ monitor = new Monitor() } = {}) {
   const clients = new Set();
@@ -53,8 +53,8 @@ export function createApp({ monitor = new Monitor() } = {}) {
       } catch (error) { json(400, { error: error.message }); }
       return;
     }
-    if (request.method === 'GET' && FILES.has(url.pathname)) {
-      const filename = FILES.get(url.pathname);
+    if (request.method === 'GET' && (FILES.has(url.pathname) || /^\/logos\/[a-z]{3}\.svg$/.test(url.pathname))) {
+      const filename = FILES.get(url.pathname) ?? url.pathname.slice(1);
       try {
         const data = await readFile(resolve(PUBLIC, filename));
         response.writeHead(200, { 'Content-Type': MIME[extname(filename)], 'Cache-Control': 'no-cache' });

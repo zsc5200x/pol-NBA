@@ -4,27 +4,27 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#111314">
-  <title>COURTSIDE · NBA 市场监控</title>
+  <title>篮场 · 美职篮盘口监控</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Ccircle cx='20' cy='20' r='20' fill='%23c8f06e'/%3E%3Ccircle cx='20' cy='20' r='10' fill='none' stroke='%23171a1c' stroke-width='3'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <div class="app-shell">
     <header class="topbar">
-      <a class="brand" href="/" aria-label="Courtside 首页"><span class="brand-mark">◉</span><span>COURTSIDE<span class="brand-sub">MARKET TERMINAL</span></span></a>
-      <nav class="topnav"><span class="nav-active">NBA 市场</span><span>POLYMARKET</span></nav>
+      <a class="brand" href="/" aria-label="篮场首页"><span class="brand-mark">◉</span><span>篮场<span class="brand-sub">实时盘口监控</span></span></a>
+      <nav class="topnav"><span class="nav-active">美职篮市场</span><span>预测市场</span></nav>
       <div class="status-pill" id="connection"><i></i><span>正在连接</span></div>
     </header>
 
     <main>
       <section class="page-heading">
-        <div><div class="eyebrow"><span class="tiny-square"></span> NBA / PREDICTION MARKETS</div><h1>比赛会结束，<br class="mobile-only">市场一直在动<span class="heading-dot">.</span></h1><p>追踪比赛盘口、市场报价与订单深度。</p></div>
-        <div class="heading-meta"><span id="mode-label">只读行情</span><strong id="clock">—</strong><span id="timezone-label">Asia/Shanghai</span></div>
+        <div><div class="eyebrow"><span class="tiny-square"></span> 美职篮 / 实时预测市场</div><h1>看懂比赛，<br class="mobile-only">看清每一档行情<span class="heading-dot">。</span></h1><p>全中文球队与盘口 · 真实买卖报价 · 实时订单深度</p></div>
+        <div class="heading-meta"><span id="mode-label">只读行情</span><strong id="clock">—</strong><span id="timezone-label">北京时间</span></div>
       </section>
 
       <section class="toolbar" aria-label="筛选条件">
         <div class="range-control" role="group" aria-label="比赛时间范围"><button data-range="upcoming" class="active">今天起 3 天</button><button data-range="past">过去 3 天</button><button data-range="both">前后各 2 天</button></div>
-        <div class="toolbar-end"><span class="update-label" id="update-label">等待行情</span><label class="select-label"><span>时区</span><select id="timezone" aria-label="比赛时区"><option value="Asia/Shanghai">北京时间</option><option value="America/New_York">美国东部</option><option value="UTC">UTC</option></select></label></div>
+        <div class="toolbar-end"><span class="update-label" id="update-label">等待行情</span><label class="select-label"><span>时区</span><select id="timezone" aria-label="比赛时区"><option value="Asia/Shanghai">北京时间</option><option value="America/New_York">美国东部</option><option value="UTC">协调世界时</option></select></label></div>
       </section>
 
       <div class="notice hidden" id="notice" role="status"></div>
@@ -33,18 +33,18 @@
         <div class="stat"><span>监控比赛</span><strong id="stat-events">00</strong><small id="date-range">按所选时区筛选</small></div>
         <div class="stat"><span>市场盘口</span><strong id="stat-markets">00</strong><small>胜负 · 让分 · 大小分</small></div>
         <div class="stat"><span>当前买卖价差</span><strong id="stat-spread">—</strong><small>当前选中的结果</small></div>
-        <div class="stat"><span>挂单总额</span><strong id="stat-depth">—</strong><small>当前结果 · USDC 名义金额</small></div>
+        <div class="stat"><span>挂单总额</span><strong id="stat-depth">—</strong><small>当前结果 · 美元名义金额</small></div>
       </section>
 
       <div class="terminal-layout">
-        <aside class="games-panel panel"><div class="panel-heading"><h2>比赛列表</h2><span class="mono" id="game-count">0 GAMES</span></div><div id="games" class="games-list"></div><div class="panel-footnote">时间按所选时区显示<br>赛程每分钟自动刷新</div></aside>
+        <aside class="games-panel panel"><div class="panel-heading"><h2>比赛列表</h2><span class="mono" id="game-count">0 场比赛</span></div><div id="games" class="games-list"></div><div class="panel-footnote">时间按所选时区显示<br>赛程每分钟自动刷新</div></aside>
 
         <section class="market-panel panel"><div class="panel-heading"><h2>市场盘口</h2><a id="market-link" class="external-link hidden" target="_blank" rel="noopener noreferrer">查看市场 ↗</a></div><div id="match-heading" class="match-heading"></div><div id="market-types" class="market-types" role="group" aria-label="盘口类型"></div><div id="markets" class="market-list"></div></section>
 
-        <section class="book-panel panel"><div class="panel-heading"><h2>订单簿</h2><span class="book-mode" id="book-mode">LIMIT ORDER BOOK</span></div><div id="book-selection" class="book-selection"></div><div id="book-summary" class="book-summary"></div><div id="book" class="orderbook"></div><div class="panel-footnote book-footnote" id="book-footnote">选择一个市场结果以查看深度</div></section>
+        <section class="book-panel panel"><div class="panel-heading"><h2>订单簿</h2><span class="book-mode" id="book-mode">实时买卖挂单</span></div><div id="book-selection" class="book-selection"></div><div id="book-summary" class="book-summary"></div><div id="book" class="orderbook"></div><div class="panel-footnote book-footnote" id="book-footnote">选择一个市场结果以查看深度</div></section>
       </div>
 
-      <footer><span><span class="footer-dot"></span> 只读监控 · 不提交订单</span><span>价格以美分显示 · 数量为份额 · 1 份结算价值最高 $1</span><span>数据来源 Polymarket</span></footer>
+      <footer><span><span class="footer-dot"></span> 只读监控 · 不提交订单</span><span>价格单位为美分 · 数量单位为份 · 每份结算价值最高 1 美元</span><span>数据来源：预测市场官方接口</span></footer>
     </main>
   </div>
   <script type="module" src="/app.js"></script>

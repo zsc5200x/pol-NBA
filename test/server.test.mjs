@@ -35,7 +35,7 @@ test('demo HTTP state is explicitly synthetic and serves health plus dashboard a
   assert.equal(health.server, 'ok');
   assert.equal(health.mode, 'demo');
   assert.equal(health.events, state.events.length);
-  for (const [path, mime] of [['/', 'text/html'], ['/app.js', 'text/javascript'], ['/styles.css', 'text/css']]) {
+  for (const [path, mime] of [['/', 'text/html'], ['/app.js', 'text/javascript'], ['/chinese.js', 'text/javascript'], ['/styles.css', 'text/css'], ['/logos/lal.svg', 'image/svg+xml']]) {
     const response = await fetch(`${app.base}${path}`);
     assert.equal(response.status, 200, `${path} should be available`);
     assert.ok(response.headers.get('content-type').startsWith(mime));
@@ -45,6 +45,9 @@ test('demo HTTP state is explicitly synthetic and serves health plus dashboard a
   }
   assert.equal((await fetch(`${app.base}/package.json`)).status, 404, 'source files must not be served');
   assert.equal((await fetch(`${app.base}/unknown`)).status, 404);
+  assert.equal((await fetch(`${app.base}/logos/zzz.svg`)).status, 404);
+  assert.equal((await fetch(`${app.base}/logos/NOTICE.md`)).status, 404);
+  assert.equal((await fetch(`${app.base}/logos/%2e%2e/server.mjs`)).status, 404);
 });
 
 test('SSE immediately sends an identifiable state snapshot and subsequent monitor updates', async t => {
