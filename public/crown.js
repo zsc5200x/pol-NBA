@@ -9,7 +9,7 @@ const labels = { totals:'大小分', spreads:'让分', moneyline:'独赢', over:
 const text = v => labels[v] ?? '未验证';
 const node = (tag, cls='', value='') => { const n=document.createElement(tag);n.className=cls;n.textContent=value;return n; };
 const n = (value, digits=3) => Number.isFinite(value) ? new Intl.NumberFormat('zh-CN',{maximumFractionDigits:digits}).format(value) : '—';
-const time = value => value ? new Date(value).toLocaleString('zh-CN',{hour12:false})+'（本机时间）' : '尚无';
+const time = value => value ? new Date(value).toLocaleString('zh-CN',{hour12:false,timeZone:'Asia/Shanghai'})+'（北京时间）' : '尚无';
 let pending=false, currentMatchIds='';
 const histories=new Map();
 async function refreshHistory(history,id){
