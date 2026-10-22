@@ -1,0 +1,79 @@
+# COURTSIDE · Polymarket NBA 盘口监控
+
+只读网页程序，追踪 Polymarket NBA 比赛的胜负、让分、大小分市场，展示每个结果的买一/卖一、中间价、价差和订单簿深度。无需钱包、API Key 或交易授权。
+
+## 启动
+
+需要 Node.js 22 或以上版本（本云环境已验证 Node.js 24）。
+
+### 下载到自己的电脑
+
+1. 安装 [Node.js](https://nodejs.org/) 的 LTS 版本；安装时保留默认选项。
+2. 打开 [GitHub 仓库](https://github.com/zsc5200x/pol-NBA)，点击绿色 **Code** 按钮，再点击 **Download ZIP**。
+3. 解压 ZIP 文件。使用 VS Code 打开解压后的项目文件夹（其中应能看到 `package.json`）。
+4. 在 VS Code 菜单中选择 **终端 → 新建终端**，依次执行：
+
+```bash
+npm ci
+npm start
+```
+
+5. 保持终端窗口打开，在自己电脑的浏览器地址栏输入 `http://localhost:3000`，即可查看页面。
+
+修改界面主要编辑 `public/` 下的文件，然后刷新浏览器。修改行情处理或服务代码后，在终端按 Ctrl+C 停止，再执行 `npm start`。这个项目没有前端热更新服务。默认使用真实行情；需要纯模拟数据时先停止服务，再执行 `npm run demo`。
+
+熟悉 Git 的用户也可以通过终端下载：
+
+```bash
+git clone https://github.com/zsc5200x/pol-NBA.git
+cd pol-NBA
+npm ci
+npm start
+```
+
+### 云环境启动
+
+```bash
+cd /workspace/pol-NBA
+npm ci --ignore-scripts --cache /workspace/.cache/npm
+npm start
+```
+
+默认监听本机 `127.0.0.1` 的 `3000` 端口。在自己的机器上启动后，使用浏览器访问该端口。`PORT=3001 npm start` 可以更换端口。只有需要让其他机器访问时才设置 `HOST`；程序是本地开发工具，没有多用户认证。
+
+```bash
+npm run demo   # 明确标记的模拟行情，与真实模式分开启动
+npm test       # 离线单元测试与本地 HTTP / SSE 集成测试
+npm run check  # JavaScript 语法检查
+```
+
+演示模式需要停止原服务或使用不同的 `PORT`。连接失败不会自动切换到演示数据。
+
+## 使用
+
+1. 选择日期范围和时区。默认上海时区的**今天及未来两天**；“过去 3 天”包括今天及此前两天；“前后各 2 天”共五个自然日。
+2. 在左侧选择比赛，在中间选择盘口及结果；右侧显示所选结果的深度。
+3. 买入价 Ask 是卖方最优挂单，卖出价 Bid 是买方最优挂单。价格以美分显示；份额是合约数量，累计金额为各档价格乘份额的总和，以 USDC 名义金额显示。
+4. 每侧展示最优 12 档的数量、累计数量、累计金额和深度条；总挂单金额统计当前结果订单簿全部档位，不保证成交。
+
+让分和总分的多个线位分别显示，不会把不同线位的订单混合。NBA 球员数据盘口、半场盘口暂不纳入首版。
+
+## 行情更新
+
+- Gamma `/sports` 动态发现 NBA 赛季，通过 `/events/keyset` 查询、分页并每分钟刷新赛程。按比赛开赛时间和所选时区过滤，不使用市场创建时间。
+- CLOB `/books` 获取完整订单簿；市场 WebSocket 订阅完整快照与价格档位增量，页面通过本地 SSE 接收更新。
+- 每 10 秒发送上游心跳，失联后重连并等待完整快照再应用增量。增量按时间戳处理，零数量删除对应价位。
+- 实时连接正常时约每 15～18 秒重新校准完整快照；断线时回退为每 3 秒轮询。请求在进行中时不会重叠发起，超时和退避会使异常期间间隔变长。页面显示当前方式、更新时间与异常状态。
+- 超过 30 秒未核验的数据会标记过期。连续 WebSocket 的有效心跳会核验已初始化、没有错误的订单簿，安静市场不会仅因没有价格变动而被误报过期；价格更新时间与核验时间分开记录。断线或失败时保留旧数据并标记错误，等待完整快照恢复。
+
+这是当前订单簿监控，**不包含历史深度回放、自动下单或告警通知**。已关闭盘口保留比赛信息，但不将结算价格冒充当前买卖报价；过去的订单深度无法由实时接口恢复。
+
+## 网络与云环境
+
+需要 HTTPS 访问 `gamma-api.polymarket.com`、`clob.polymarket.com`，以及 WebSocket 访问 `ws-subscriptions-clob.polymarket.com`。安装依赖需要 `registry.npmjs.org`。遵循环境注入的 `HTTPS_PROXY` / `HTTP_PROXY` 和 CA 信任配置，不关闭 TLS 验证。公开行情接口不需要密钥。
+
+云环境任务已隔离，直接使用现有 `/workspace/pol-NBA` checkout，不创建额外 Git worktree。依赖文件可通过环境快照保留，服务进程需要每次任务重新启动。环境设置中的安装脚本与启动说明用于复现配置；保存草稿与发布环境是两步，保存本身不会启动进程。
+
+`GET /api/health` 返回服务、数据模式和上游状态；HTTP 200 仅表示服务可响应，真实行情还要确认 `mode=live`、`upstream=live`。`GET /api/state` 返回赛程、订单簿、更新时间及 WebSocket 状态；`GET /api/stream` 提供 `state` SSE 事件。`POST /api/settings` 可切换 `range` 和 `timezone`，设置作用于整个本地进程、重启后恢复默认。
+
+接口依据与字段说明见 [docs/api-notes.md](docs/api-notes.md)。
