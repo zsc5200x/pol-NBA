@@ -90,6 +90,19 @@ function empty(title, detail, icon = '↗') {
   return box;
 }
 
+function preservePageScroll(update) {
+  const { scrollX, scrollY } = window;
+  const restore = () => {
+    if (window.scrollX !== scrollX || window.scrollY !== scrollY) window.scrollTo(scrollX, scrollY);
+  };
+  try {
+    update();
+  } finally {
+    restore();
+    requestAnimationFrame(restore);
+  }
+}
+
 function activeGame() {
   return state?.events?.find(event => event.id === selectedEvent);
 }
@@ -124,6 +137,10 @@ function status() {
 }
 
 function renderGames() {
+  preservePageScroll(renderGamesContent);
+}
+
+function renderGamesContent() {
   const signature = JSON.stringify([state.timezone, selectedEvent, state.error,
     state.events.map(event => [event.id, event.title, event.startTime, event.markets.length])]);
   if (signature === gamesSignature) return;
@@ -156,6 +173,10 @@ function renderGames() {
 }
 
 function renderMarkets() {
+  preservePageScroll(renderMarketsContent);
+}
+
+function renderMarketsContent() {
   const game = activeGame();
   const scrollTop = renderedMarketEvent === game?.id ? nodes.markets.scrollTop : 0;
   renderedMarketEvent = game?.id;
@@ -300,6 +321,10 @@ function orderRows(levels, side, maxDepth) {
 }
 
 function renderBook() {
+  preservePageScroll(renderBookContent);
+}
+
+function renderBookContent() {
   nodes['book-selection'].replaceChildren();
   nodes['book-summary'].replaceChildren();
   nodes.book.replaceChildren();
