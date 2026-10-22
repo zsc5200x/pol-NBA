@@ -8,6 +8,9 @@ let state = null;
 let selectedEvent = null;
 let selectedToken = null;
 let selectedType = 'all';
+let expandedMarketKey = null;
+let visibleDepth = 6;
+let renderedBookToken = null;
 let transportConnected = false;
 let settingsPending = false;
 let localError = null;
@@ -16,6 +19,18 @@ let renderedMarketEvent = null;
 const chosenLines = new Map();
 const lineScroll = new Map();
 const bookPanel = document.querySelector('.book-panel');
+bookPanel.id = 'market-book-panel';
+bookPanel.classList.add('hidden');
+const depthControl = document.createElement('select');
+depthControl.className = 'depth-control';
+depthControl.setAttribute('aria-label', '每侧显示的深度档数');
+for (const count of [6, 12]) {
+  const option = document.createElement('option'); option.value = String(count); option.textContent = `每侧 ${count} 档`;
+  depthControl.append(option);
+}
+depthControl.addEventListener('change', () => { visibleDepth = Number(depthControl.value); renderBook(); });
+bookPanel.querySelector('.panel-heading').append(depthControl);
+
 const primaryTypes = new Set(['moneyline', 'spreads', 'spread', 'totals', 'total']);
 const money = (value, digits = 0) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: digits }).format(value);
 const number = (value, digits = 0) => new Intl.NumberFormat('en-US', { maximumFractionDigits: digits }).format(value);
@@ -165,7 +180,7 @@ function renderGamesContent() {
     const gameMeta = el('div', 'game-meta');
     gameMeta.append(el('span', 'game-time mono', date(event.startTime, { hour: '2-digit', minute: '2-digit', hour12: false })), el('span', 'game-market-count', `${event.markets.length} 个盘口`));
     button.append(el('span', 'game-day-mobile', date(event.startTime, { month: 'numeric', day: 'numeric', weekday: 'short' })), gameMeta, gameTeams(event), el('span', 'game-arrow', '↗'));
-    button.addEventListener('click', () => { selectedEvent = event.id; selectedToken = preferredOutcome(event); selectedType = 'all'; render(); });
+    button.addEventListener('click', () => { selectedEvent = event.id; selectedToken = preferredOutcome(event); selectedType = 'all'; expandedMarketKey = null; render(); });
     nodes.games.append(button);
   }
   nodes.games.scrollTop = scrollTop;
@@ -173,7 +188,13 @@ function renderGamesContent() {
 }
 
 function renderMarkets() {
-  preservePageScroll(renderMarketsContent);
+  const bookScrollTop = renderedBookToken === selectedToken ? nodes.book.scrollTop : 0;
+  preservePageScroll(() => {
+    renderMarketsContent();
+    // Reparenting the live book into its rebuilt card resets its inner scroll.
+    // Restore it before renderBook captures the position for the next update.
+    nodes.book.scrollTop = bookScrollTop;
+  });
 }
 
 function renderMarketsContent() {
@@ -201,6 +222,7 @@ function renderMarketsContent() {
     button.type = 'button';
     button.addEventListener('click', () => {
       selectedType = type;
+      if (type !== 'all' && expandedMarketKey !== `${game.id}:${type}`) expandedMarketKey = null;
       nodes.markets.scrollTop = 0;
       if (type !== 'all' && selectedOutcome()?.market.type !== type) {
         const group = groupMarkets(game).find(group => group.type === type);
@@ -215,25 +237,41 @@ function renderMarketsContent() {
   for (const group of groupMarkets(game).filter(group => selectedType === 'all' || group.type === selectedType)) {
     const key = `${game.id}:${group.type}`;
     const selectedInGroup = selection?.market.type === group.type;
+    const isExpanded = selectedInGroup && expandedMarketKey === key;
     const rememberedId = selectedInGroup ? selection.market.id : chosenLines.get(key);
     const line = preferredLine(group.lines, rememberedId);
     const market = line.market;
     chosenLines.set(key, market.id);
-    const card = el('article', `market-card line-card ${selectedInGroup ? 'expanded' : ''}`);
+    const card = el('article', `market-card line-card ${isExpanded ? 'expanded' : ''}`);
     card.dataset.type = group.type;
     card.dataset.marketId = market.id;
     const header = el('div', 'line-card-header');
     const description = el('div', 'line-description');
     description.append(el('h4', '', typeName(group.type)), el('small', '', market.closed ? '已结束 / 已结算' : market.acceptingOrders ? `${group.lines.length} 个可选盘口 · 接受挂单` : '暂停挂单'));
     description.append(el('small', 'line-price-caption', '报价为买入价（卖一）'));
+    const disclosure = el('button', `book-disclosure ${isExpanded ? 'open' : ''}`, isExpanded ? '收起订单簿 ▴' : '展开订单簿 ▾');
+    disclosure.type = 'button';
+    disclosure.setAttribute('aria-expanded', String(isExpanded));
+    disclosure.setAttribute('aria-controls', 'market-book-panel');
+    disclosure.addEventListener('click', () => {
+      if (isExpanded) expandedMarketKey = null;
+      else {
+        selectedToken = correspondingOutcome(selectedOutcome()?.outcome, market)?.tokenId ?? null;
+        expandedMarketKey = key;
+      }
+      renderMarkets(); renderBook(); renderStats();
+    });
+    description.append(disclosure);
     header.append(description);
     const outcomes = el('div', 'outcomes line-quotes');
     for (const [index, outcome] of market.outcomes.entries()) {
       const quote = quotes(outcome.tokenId);
-      const button = el('button', `outcome-card line-quote side-${index} ${selectedToken === outcome.tokenId ? 'active' : ''}`);
+      const button = el('button', `outcome-card line-quote side-${index} ${isExpanded && selectedToken === outcome.tokenId ? 'active' : ''}`);
       button.type = 'button';
       button.dataset.tokenId = outcome.tokenId;
-      button.setAttribute('aria-pressed', String(selectedToken === outcome.tokenId));
+      button.setAttribute('aria-pressed', String(isExpanded && selectedToken === outcome.tokenId));
+      button.setAttribute('aria-expanded', String(isExpanded && selectedToken === outcome.tokenId));
+      button.setAttribute('aria-controls', 'market-book-panel');
       button.setAttribute('aria-label', `${outcomeTitle(outcome, market)}，买入价 ${cents(quote.ask)}`);
       button.title = `买入价（卖一）：${cents(quote.ask)}；卖出价（买一）：${cents(quote.bid)}`;
       button.append(el('span', 'outcome-name', outcomeTitle(outcome, market)), el('strong', 'mono', cents(quote.ask)));
@@ -241,6 +279,7 @@ function renderMarketsContent() {
       else if (quote.book?.error) button.append(el('small', 'quote-warning', '行情异常'));
       else if (!quote.book) button.append(el('small', 'quote-warning', '等待报价'));
       button.addEventListener('click', () => {
+        expandedMarketKey = isExpanded && selectedToken === outcome.tokenId ? null : key;
         selectedToken = outcome.tokenId;
         chosenLines.set(key, market.id);
         renderMarkets(); renderBook(); renderStats();
@@ -263,6 +302,7 @@ function renderMarketsContent() {
         chip.setAttribute('aria-pressed', String(option.market.id === market.id));
         chip.setAttribute('aria-label', marketTitle(option.market, game));
         chip.addEventListener('click', () => {
+          if (expandedMarketKey && expandedMarketKey !== key) expandedMarketKey = null;
           selectedToken = correspondingOutcome(selectedOutcome()?.outcome, option.market)?.tokenId ?? null;
           chosenLines.set(key, option.market.id);
           renderMarkets(); renderBook(); renderStats();
@@ -284,10 +324,14 @@ function renderMarketsContent() {
       const active = strip.querySelector('.active');
       strip.scrollLeft = lineScroll.get(key) ?? (active ? Math.max(0, active.offsetLeft - strip.clientWidth / 2) : 0);
     } else nodes.markets.append(card);
-    if (selectedInGroup) {
+    if (isExpanded) {
       card.append(bookPanel);
       bookPanel.classList.remove('hidden');
     }
+  }
+  if (!nodes.markets.contains(bookPanel)) {
+    bookPanel.classList.add('hidden');
+    nodes.markets.append(bookPanel);
   }
   nodes.markets.scrollTop = scrollTop;
 }
@@ -308,7 +352,7 @@ function orderRows(levels, side, maxDepth) {
   let cumulativeNotional = 0;
   const fragment = document.createDocumentFragment();
   const rows = [];
-  for (const level of levels.slice(0, 12)) {
+  for (const level of levels.slice(0, visibleDepth)) {
     cumulativeSize += level.size;
     cumulativeNotional += level.price * level.size;
     const row = el('div', `book-row ${side}`);
@@ -321,7 +365,10 @@ function orderRows(levels, side, maxDepth) {
 }
 
 function renderBook() {
+  const scrollTop = renderedBookToken === selectedToken ? nodes.book.scrollTop : 0;
   preservePageScroll(renderBookContent);
+  nodes.book.scrollTop = scrollTop;
+  renderedBookToken = selectedToken;
 }
 
 function renderBookContent() {
@@ -352,7 +399,7 @@ function renderBookContent() {
     const heading = el('div', 'book-row book-table-heading');
     heading.append(el('span', '', '价格'), el('span', '', '份额'), el('span', '', '累计份额'), el('span', '', '累计金额'));
     nodes.book.append(heading);
-    const maxDepth = Math.max(quote.bids.slice(0, 12).reduce((sum, level) => sum + level.size, 0), quote.asks.slice(0, 12).reduce((sum, level) => sum + level.size, 0));
+    const maxDepth = Math.max(quote.bids.slice(0, visibleDepth).reduce((sum, level) => sum + level.size, 0), quote.asks.slice(0, visibleDepth).reduce((sum, level) => sum + level.size, 0));
     nodes.book.append(el('div', 'side-label ask-color', `卖方挂单 · ${quote.asks.length} 档`));
     nodes.book.append(quote.asks.length ? orderRows(quote.asks, 'asks', maxDepth) : el('div', 'no-side', '暂无卖单'));
     const separator = el('div', 'book-divider'); separator.append(el('span', '', '买卖价差'), el('strong', 'mono', quote.ask !== null && quote.bid !== null ? cents(quote.ask - quote.bid) : '—')); nodes.book.append(separator);
@@ -362,7 +409,7 @@ function renderBookContent() {
   const bookVerifiedAt = quote.book.verifiedAt || quote.book.updatedAt;
   const age = bookVerifiedAt ? Math.max(0, Math.floor((Date.now() - new Date(bookVerifiedAt).getTime()) / 1000)) : null;
   const timeOptions = { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
-  nodes['book-footnote'].textContent = `${state.mode === 'demo' ? '模拟快照' : state.stream?.connected ? '实时推送' : '3 秒快照'} · 快照 ${quote.book.updatedAt ? date(quote.book.updatedAt, timeOptions) : '时间未知'}${quote.book.verifiedAt ? ` · 核验 ${date(quote.book.verifiedAt, timeOptions)}` : ''}${age > 30 ? ' · 数据已过期' : ''}\n每侧显示最优 12 档，按最优价起累计；金额 = 价格 × 份额。`;
+  nodes['book-footnote'].textContent = `${state.mode === 'demo' ? '模拟快照' : state.stream?.connected ? '实时推送' : '3 秒快照'} · 快照 ${quote.book.updatedAt ? date(quote.book.updatedAt, timeOptions) : '时间未知'}${quote.book.verifiedAt ? ` · 核验 ${date(quote.book.verifiedAt, timeOptions)}` : ''}${age > 30 ? ' · 数据已过期' : ''}\n每侧显示最优 ${visibleDepth} 档，按最优价起累计；金额 = 价格 × 份额。`;
   nodes['book-footnote'].classList.toggle('stale', age > 30);
 }
 
@@ -370,6 +417,7 @@ function render() {
   if (!state) return;
   if (!state.events.some(event => event.id === selectedEvent)) {
     const preferredEvent = state.events.find(event => event.markets.some(market => market.acceptingOrders && !market.closed && primaryTypes.has(market.type))) || state.events.find(event => event.markets.some(market => market.acceptingOrders && !market.closed)) || state.events[0];
+    expandedMarketKey = null;
     selectedEvent = preferredEvent?.id || null;
     selectedToken = preferredOutcome(preferredEvent);
   }
