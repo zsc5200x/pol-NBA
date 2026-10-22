@@ -9,7 +9,7 @@
     "start": "node server.mjs",
     "demo": "node server.mjs --demo",
     "test": "node --test",
-    "check": "node --check server.mjs && node --check src/domain.mjs && node --check src/upstream.mjs && node --check src/monitor.mjs && node --check public/app.js && node --check public/chinese.js"
+    "check": "node --check server.mjs && node --check src/domain.mjs && node --check src/upstream.mjs && node --check src/monitor.mjs && node --check public/app.js && node --check public/chinese.js && node --check public/market-lines.js"
   },
   "dependencies": {
     "https-proxy-agent": "7.0.6",

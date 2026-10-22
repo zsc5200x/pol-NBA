@@ -35,7 +35,7 @@ test('demo HTTP state is explicitly synthetic and serves health plus dashboard a
   assert.equal(health.server, 'ok');
   assert.equal(health.mode, 'demo');
   assert.equal(health.events, state.events.length);
-  for (const [path, mime] of [['/', 'text/html'], ['/app.js', 'text/javascript'], ['/chinese.js', 'text/javascript'], ['/styles.css', 'text/css'], ['/logos/lal.svg', 'image/svg+xml']]) {
+  for (const [path, mime] of [['/', 'text/html'], ['/app.js', 'text/javascript'], ['/chinese.js', 'text/javascript'], ['/market-lines.js', 'text/javascript'], ['/styles.css', 'text/css'], ['/logos/lal.svg', 'image/svg+xml']]) {
     const response = await fetch(`${app.base}${path}`);
     assert.equal(response.status, 200, `${path} should be available`);
     assert.ok(response.headers.get('content-type').startsWith(mime));

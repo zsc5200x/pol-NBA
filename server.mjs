@@ -5,7 +5,7 @@ import { resolve, extname } from 'node:path';
 import { Monitor } from './src/monitor.mjs';
 
 const PUBLIC = fileURLToPath(new URL('./public/', import.meta.url));
-const FILES = new Map([['/', 'index.html'], ['/app.js', 'app.js'], ['/chinese.js', 'chinese.js'], ['/styles.css', 'styles.css']]);
+const FILES = new Map([['/', 'index.html'], ['/app.js', 'app.js'], ['/chinese.js', 'chinese.js'], ['/market-lines.js', 'market-lines.js'], ['/styles.css', 'styles.css']]);
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
 
 export function createApp({ monitor = new Monitor() } = {}) {

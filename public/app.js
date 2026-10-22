@@ -1,4 +1,5 @@
 import { eventTeams, eventTitle, marketTitle, outcomeTitle, typeName, errorMessage, timezoneName } from './chinese.js';
+import { groupMarkets, preferredLine, correspondingOutcome } from './market-lines.js';
 
 const $ = (selector) => document.querySelector(selector);
 const nodes = Object.fromEntries(['connection', 'mode-label', 'clock', 'timezone-label', 'update-label', 'timezone', 'notice', 'stat-events', 'stat-markets', 'stat-spread', 'stat-depth', 'date-range', 'game-count', 'games', 'match-heading', 'market-types', 'markets', 'market-link', 'book-mode', 'book-selection', 'book-summary', 'book', 'book-footnote'].map(id => [id, document.getElementById(id)]));
@@ -12,6 +13,9 @@ let settingsPending = false;
 let localError = null;
 let gamesSignature = null;
 let renderedMarketEvent = null;
+const chosenLines = new Map();
+const lineScroll = new Map();
+const bookPanel = document.querySelector('.book-panel');
 const primaryTypes = new Set(['moneyline', 'spreads', 'spread', 'totals', 'total']);
 const money = (value, digits = 0) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: digits }).format(value);
 const number = (value, digits = 0) => new Intl.NumberFormat('en-US', { maximumFractionDigits: digits }).format(value);
@@ -160,6 +164,7 @@ function renderMarkets() {
   nodes.markets.replaceChildren();
   nodes['market-link'].classList.add('hidden');
   if (!game) {
+    bookPanel.classList.add('hidden');
     nodes.markets.append(empty('等待赛程', '获得比赛后，这里会列出可用盘口及各结果报价。', '◈'));
     return;
   }
@@ -176,37 +181,92 @@ function renderMarkets() {
     button.addEventListener('click', () => {
       selectedType = type;
       nodes.markets.scrollTop = 0;
-      if (type !== 'all' && selectedOutcome()?.market.type !== type) selectedToken = game.markets.find(market => market.type === type)?.outcomes[0]?.tokenId || null;
+      if (type !== 'all' && selectedOutcome()?.market.type !== type) {
+        const group = groupMarkets(game).find(group => group.type === type);
+        const line = group && preferredLine(group.lines, chosenLines.get(`${game.id}:${type}`));
+        selectedToken = line ? correspondingOutcome(selectedOutcome()?.outcome, line.market)?.tokenId ?? null : null;
+      }
       renderMarkets(); renderBook(); renderStats();
     });
     nodes['market-types'].append(button);
   }
-  for (const market of game.markets.filter(market => selectedType === 'all' || market.type === selectedType)) {
-    const card = el('article', 'market-card');
-    const heading = el('div', 'market-card-heading');
-    heading.append(el('span', 'market-type-label', typeName(market.type)), el('span', market.acceptingOrders ? 'market-open' : 'market-closed', market.closed ? '已结束 / 已结算' : market.acceptingOrders ? '接受挂单' : '暂停挂单'));
-    card.append(heading, el('h4', '', marketTitle(market, game)));
-    const outcomes = el('div', 'outcomes');
-    for (const outcome of market.outcomes) {
+  const selection = selectedOutcome();
+  for (const group of groupMarkets(game).filter(group => selectedType === 'all' || group.type === selectedType)) {
+    const key = `${game.id}:${group.type}`;
+    const selectedInGroup = selection?.market.type === group.type;
+    const rememberedId = selectedInGroup ? selection.market.id : chosenLines.get(key);
+    const line = preferredLine(group.lines, rememberedId);
+    const market = line.market;
+    chosenLines.set(key, market.id);
+    const card = el('article', `market-card line-card ${selectedInGroup ? 'expanded' : ''}`);
+    card.dataset.type = group.type;
+    card.dataset.marketId = market.id;
+    const header = el('div', 'line-card-header');
+    const description = el('div', 'line-description');
+    description.append(el('h4', '', typeName(group.type)), el('small', '', market.closed ? '已结束 / 已结算' : market.acceptingOrders ? `${group.lines.length} 个可选盘口 · 接受挂单` : '暂停挂单'));
+    description.append(el('small', 'line-price-caption', '报价为买入价（卖一）'));
+    header.append(description);
+    const outcomes = el('div', 'outcomes line-quotes');
+    for (const [index, outcome] of market.outcomes.entries()) {
       const quote = quotes(outcome.tokenId);
-      const button = el('button', `outcome-card ${selectedToken === outcome.tokenId ? 'active' : ''}`);
+      const button = el('button', `outcome-card line-quote side-${index} ${selectedToken === outcome.tokenId ? 'active' : ''}`);
       button.type = 'button';
+      button.dataset.tokenId = outcome.tokenId;
       button.setAttribute('aria-pressed', String(selectedToken === outcome.tokenId));
-      const top = el('div', 'outcome-top');
-      top.append(el('span', 'outcome-name', outcomeTitle(outcome, market)), el('span', 'outcome-check', selectedToken === outcome.tokenId ? '●' : '○'));
-      const prices = el('div', 'quote-prices');
-      const buy = el('div'); buy.append(el('small', '', '买入价（卖一）'), el('strong', 'ask-color mono', cents(quote.ask)));
-      const sell = el('div'); sell.append(el('small', '', '卖出价（买一）'), el('strong', 'bid-color mono', cents(quote.bid)));
-      prices.append(buy, sell);
-      button.append(top, prices);
-      if (market.closed) button.append(el('small', 'quote-warning', '历史盘口 · 无可交易报价'));
-      else if (quote.book?.error) button.append(el('small', 'quote-warning', '订单簿暂不可用'));
-      else if (!quote.book) button.append(el('small', 'quote-warning', '等待订单簿'));
-      button.addEventListener('click', () => { selectedToken = outcome.tokenId; renderMarkets(); renderBook(); renderStats(); });
+      button.setAttribute('aria-label', `${outcomeTitle(outcome, market)}，买入价 ${cents(quote.ask)}`);
+      button.title = `买入价（卖一）：${cents(quote.ask)}；卖出价（买一）：${cents(quote.bid)}`;
+      button.append(el('span', 'outcome-name', outcomeTitle(outcome, market)), el('strong', 'mono', cents(quote.ask)));
+      if (market.closed) button.append(el('small', 'quote-warning', '已结束'));
+      else if (quote.book?.error) button.append(el('small', 'quote-warning', '行情异常'));
+      else if (!quote.book) button.append(el('small', 'quote-warning', '等待报价'));
+      button.addEventListener('click', () => {
+        selectedToken = outcome.tokenId;
+        chosenLines.set(key, market.id);
+        renderMarkets(); renderBook(); renderStats();
+      });
       outcomes.append(button);
     }
-    card.append(outcomes);
-    nodes.markets.append(card);
+    header.append(outcomes);
+    card.append(header);
+    if (group.type !== 'moneyline') {
+      const hint = group.type === 'spreads' ? `分值以${eventTeams(game)[0]?.short ?? '第一支球队'}为准，正数为受让、负数为让分` : '选择比赛总分线，查看大分与小分报价';
+      card.append(el('p', 'line-hint', hint));
+      const selector = el('div', 'line-selector');
+      const strip = el('div', 'line-strip');
+      strip.setAttribute('role', 'group');
+      strip.setAttribute('aria-label', `${typeName(group.type)}分值选择`);
+      for (const option of group.lines) {
+        const chip = el('button', `line-chip ${option.market.id === market.id ? 'active' : ''}`, option.label);
+        chip.type = 'button';
+        chip.dataset.marketId = option.market.id;
+        chip.setAttribute('aria-pressed', String(option.market.id === market.id));
+        chip.setAttribute('aria-label', marketTitle(option.market, game));
+        chip.addEventListener('click', () => {
+          selectedToken = correspondingOutcome(selectedOutcome()?.outcome, option.market)?.tokenId ?? null;
+          chosenLines.set(key, option.market.id);
+          renderMarkets(); renderBook(); renderStats();
+          const active = nodes.markets.querySelector(`[data-type="${group.type}"] .line-chip.active`);
+          if (active) active.parentElement.scrollLeft = Math.max(0, active.offsetLeft - active.parentElement.clientWidth / 2 + active.offsetWidth / 2);
+        });
+        strip.append(chip);
+      }
+      const arrow = (text, label, direction) => {
+        const button = el('button', 'line-arrow', text);
+        button.type = 'button'; button.setAttribute('aria-label', label);
+        button.addEventListener('click', () => strip.scrollBy({ left: direction * 220, behavior: 'smooth' }));
+        return button;
+      };
+      selector.append(arrow('‹', '向左查看更多分值', -1), strip, arrow('›', '向右查看更多分值', 1));
+      strip.addEventListener('scroll', () => lineScroll.set(key, strip.scrollLeft), { passive: true });
+      card.append(selector);
+      nodes.markets.append(card);
+      const active = strip.querySelector('.active');
+      strip.scrollLeft = lineScroll.get(key) ?? (active ? Math.max(0, active.offsetLeft - strip.clientWidth / 2) : 0);
+    } else nodes.markets.append(card);
+    if (selectedInGroup) {
+      card.append(bookPanel);
+      bookPanel.classList.remove('hidden');
+    }
   }
   nodes.markets.scrollTop = scrollTop;
 }
@@ -226,14 +286,16 @@ function orderRows(levels, side, maxDepth) {
   let cumulativeSize = 0;
   let cumulativeNotional = 0;
   const fragment = document.createDocumentFragment();
+  const rows = [];
   for (const level of levels.slice(0, 12)) {
     cumulativeSize += level.size;
     cumulativeNotional += level.price * level.size;
     const row = el('div', `book-row ${side}`);
     row.style.setProperty('--depth', `${maxDepth ? Math.min(100, cumulativeSize / maxDepth * 100) : 0}%`);
     row.append(el('span', `${side === 'bids' ? 'bid-color' : 'ask-color'} mono`, cents(level.price)), el('span', 'mono', number(level.size, 2)), el('span', 'mono', number(cumulativeSize, 2)), el('span', 'mono', money(cumulativeNotional, 2)));
-    fragment.append(row);
+    rows.push(row);
   }
+  fragment.append(...(side === 'asks' ? rows.reverse() : rows));
   return fragment;
 }
 
