@@ -56,6 +56,30 @@ export function parseStartTime(value, timeZone) {
     return valid.length===1?new Date(valid[0]).toISOString():null;
   } catch { return null; }
 }
+function isCompleteCrownList(root, profile, mode, pageMarker) {
+  if (profile.pagination?.hasMorePath !== 'phpData.PAGECOUNT' || profile.recordsPath !== 'response.*'
+    || profile.fields.id !== 'GID' || root?.status !== 'success'
+    || scalar(root, 'phpData.CODE') !== 'hasData' || scalar(root, 'phpData.NOWSHOWTYPE') !== mode) return false;
+  const totalMarker = scalar(root, 'phpData.TOTALDATACOUNT');
+  if (!/^[1-9]\d*$/.test(pageMarker ?? '') || !/^[1-9]\d*$/.test(totalMarker ?? '')) return false;
+  const total = Number(totalMarker), pages = Number(pageMarker);
+  if (!Number.isSafeInteger(total) || !Number.isSafeInteger(pages) || pages > total) return false;
+  const response = root.response;
+  if (!response || typeof response !== 'object' || Array.isArray(response)) return false;
+  const entries = Object.entries(response);
+  if (entries.length !== total) return false;
+  const ids = new Set();
+  for (const [key, row] of entries) {
+    if (!/^GAME_(0|[1-9]\d*)$/.test(key) || Number(key.slice(5)) >= total
+      || !row || typeof row !== 'object' || Array.isArray(row) || !Object.hasOwn(row, 'GID')) return false;
+    const id = row.GID;
+    if (!(typeof id === 'string' && /^[1-9]\d*$/.test(id))
+      && !(Number.isSafeInteger(id) && id > 0)) return false;
+    if (ids.has(String(id))) return false;
+    ids.add(String(id));
+  }
+  return true;
+}
 export function parseList(root, profile, mode, now = new Date().toISOString()) {
   if (profile.sourceModePath && scalar(root, profile.sourceModePath) !== mode) throw new CrownError('SOURCE_MODE_CONFLICT');
   const matches = new Map();
@@ -84,6 +108,17 @@ export function parseList(root, profile, mode, now = new Date().toISOString()) {
     const marker = scalar(root, p.hasMorePath);
     if ((p.moreValues ?? []).map(String).includes(marker)) { more = true; next = scalar(root, p.nextPath); }
     else if ((p.endValues ?? []).map(String).includes(marker)) paginationVerified = true;
+    // PAGECOUNT can describe UI pages even when this response contains every
+    // raw game. Prove completeness against the full list before NBA filtering.
+    else if (isCompleteCrownList(root, profile, mode, marker)) paginationVerified = true;
+    // Crown's verified empty-list response omits PAGECOUNT and explicitly
+    // supplies noData plus a zero total. Do not infer emptiness from NBA filtering.
+    else if (p.hasMorePath === 'phpData.PAGECOUNT' && marker === null && root?.status === 'success'
+      && Array.isArray(root.response) && root.response.length === 0
+      && scalar(root, 'phpData.NOWSHOWTYPE') === mode
+      && scalar(root, 'phpData.TOTALDATACOUNT') === '0'
+      && scalar(root, 'phpData.CODE') === 'noData'
+      && scalar(root, 'phpData.ERROR') === 'noData') paginationVerified = true;
     else throw new CrownError('PAGINATION_UNKNOWN');
     if (more && !next) throw new CrownError('PAGINATION_UNKNOWN');
   }

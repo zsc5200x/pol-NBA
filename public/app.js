@@ -1,6 +1,9 @@
 import { eventTeams, eventTitle, marketTitle, outcomeTitle, typeName, errorMessage, teamFor } from './chinese.js';
 import { groupMarkets, preferredLine, correspondingOutcome, lineFor, lineForReference } from './market-lines.js';
 import { createPriceHistoryPanel } from './price-history.js';
+import { createHedgePanel } from './hedge-panel.js';
+import { bestProfitableHedgesByEvent } from './hedge-calculator.js';
+import { isMarketState, mergeStatePatch } from './state-stream.js';
 
 const $ = (selector) => document.querySelector(selector);
 const nodes = Object.fromEntries(['notice', 'stat-events', 'stat-markets', 'stat-spread', 'stat-depth', 'date-range', 'game-count', 'games', 'match-heading', 'markets', 'market-link', 'book-mode', 'book-selection', 'book-summary', 'book', 'book-footnote'].map(id => [id, document.getElementById(id)]));
@@ -11,9 +14,13 @@ let selectedToken = null;
 let expandedMarketKey = null;
 let visibleDepth = 6;
 let renderedBookToken = null;
+let renderedBookSignature = null;
+let pendingRender = null;
 let transportConnected = false;
 let localError = null;
 let gamesSignature = null;
+let profitableGames = new Map();
+const gameRows = new Map();
 let renderedMarketEvent = null;
 let historyType = 'spreads';
 const chosenLines = new Map();
@@ -157,7 +164,7 @@ function crownQuote(game, market, outcome) {
   const side = direction && crownMarket?.sides?.find(candidate => candidate.direction === direction);
   const raw = Number(side?.rawOdds);
   const valid = crownMarket?.status === 'matched' && side && Number.isFinite(raw) && raw > 0 && side.comparisonStatus === 'comparable_quote';
-  return { text: valid ? `皇冠 ${raw.toFixed(3)}` : '皇冠暂无有效水位', valid };
+  return { text: valid ? `皇冠 ${raw.toFixed(2)}` : '皇冠暂无有效水位', valid };
 }
 
 function preferredOutcome(event) {
@@ -178,34 +185,107 @@ function renderGames() {
   preservePageScroll(renderGamesContent);
 }
 
+function selectOpportunity(candidate) {
+  selectedEvent = candidate?.eventId ?? null;
+  selectedToken = candidate?.polTokenId ?? null;
+  expandedMarketKey = null;
+  if (candidate) {
+    chosenLines.set(`${candidate.eventId}:${candidate.type}`, candidate.marketId);
+    historyType = candidate.type;
+  }
+}
+
+function refreshProfitableGames() {
+  profitableGames = bestProfitableHedgesByEvent(state, hedgePanel.getSettings(), { connected: transportConnected });
+}
+
+function selectGame(event) {
+  const candidate = profitableGames.get(event?.id);
+  if (candidate) selectOpportunity(candidate);
+  else {
+    selectedEvent = event?.id ?? null;
+    selectedToken = preferredOutcome(event);
+    expandedMarketKey = null;
+  }
+}
+
 function renderGamesContent() {
-  const signature = JSON.stringify([state.timezone, selectedEvent, state.error,
-    state.events.map(event => [event.id, event.title, event.startTime, event.markets.length])]);
+  const events = state.events;
+  const emptyDetail = state.error ? '暂时无法获取赛程，程序会自动重试。' : '当前时间范围内没有可展示的美职篮比赛。';
+  const signature = JSON.stringify([state.timezone, selectedEvent, emptyDetail,
+    events.map(event => {
+      const candidate = profitableGames.get(event.id);
+      return [event.id, event.title, event.startTime, event.markets.length, candidate?.profitRmb, candidate?.polLabel, candidate?.crownLabel];
+    })]);
   if (signature === gamesSignature) return;
   gamesSignature = signature;
   const scrollTop = nodes.games.scrollTop;
   const scrollLeft = nodes.games.scrollLeft;
-  nodes.games.replaceChildren();
-  if (!state.events.length) {
-    nodes.games.append(empty('暂无比赛', state.error ? '暂时无法获取赛程。请检查网络配置，程序会自动重试。' : '这个时间范围内没有可展示的美职篮比赛。可以试试其他时间范围。', '◷'));
-    return;
-  }
+  const focused = nodes.games.contains(document.activeElement) ? document.activeElement : null;
+  const countText = `${events.length} 场比赛`;
+  if (nodes['game-count'].textContent !== countText) nodes['game-count'].textContent = countText;
+  const children = [];
+  const keep = new Set();
   let previousDay = null;
-  for (const event of state.events) {
+  for (const event of events) {
+    const candidate = profitableGames.get(event.id);
     const day = date(event.startTime, { month: 'long', day: 'numeric', weekday: 'short' });
     if (day !== previousDay) {
-      nodes.games.append(el('div', 'day-label', day));
+      const key = `day:${day}`;
+      if (!gameRows.has(key)) gameRows.set(key, { root: el('div', 'day-label', day) });
+      keep.add(key);
+      children.push(gameRows.get(key).root);
       previousDay = day;
     }
-    const button = el('button', `game-card ${selectedEvent === event.id ? 'selected' : ''}`);
-    button.type = 'button';
+    const key = `event:${event.id}`;
+    let row = gameRows.get(key);
+    if (!row) {
+      const button = el('button', 'game-card');
+      button.type = 'button';
+      button.dataset.eventId = event.id;
+      row = { root: button, day: el('span', 'game-day-mobile'), time: el('span', 'game-time mono'),
+        profit: el('span', 'game-profit mono'), count: el('span', 'game-market-count'), teams: gameTeams(event), title: event.title };
+      const gameMeta = el('div', 'game-meta');
+      gameMeta.append(row.time, row.profit, row.count);
+      button.append(row.day, gameMeta, row.teams, el('span', 'game-arrow', '↗'));
+      button.addEventListener('click', () => {
+        const current = state.events.find(item => item.id === event.id);
+        if (current) { selectGame(current); render(); }
+      });
+      gameRows.set(key, row);
+    }
+    const button = row.root;
+    button.classList.toggle('selected', selectedEvent === event.id);
     button.setAttribute('aria-pressed', String(selectedEvent === event.id));
-    const gameMeta = el('div', 'game-meta');
-    gameMeta.append(el('span', 'game-time mono', date(event.startTime, { hour: '2-digit', minute: '2-digit', hour12: false })), el('span', 'game-market-count', `${event.markets.length} 个盘口`));
-    button.append(el('span', 'game-day-mobile', date(event.startTime, { month: 'numeric', day: 'numeric', weekday: 'short' })), gameMeta, gameTeams(event), el('span', 'game-arrow', '↗'));
-    button.addEventListener('click', () => { selectedEvent = event.id; selectedToken = preferredOutcome(event); expandedMarketKey = null; render(); });
-    nodes.games.append(button);
+    row.day.textContent = date(event.startTime, { month: 'numeric', day: 'numeric', weekday: 'short' });
+    row.time.textContent = date(event.startTime, { hour: '2-digit', minute: '2-digit', hour12: false });
+    row.count.textContent = `${event.markets.length} 个盘口`;
+    row.profit.hidden = !candidate;
+    if (candidate) {
+      // Keep very small positive profits visible instead of rounding them to +¥0.
+      row.profit.textContent = candidate.profitRmb < 0.01 ? '+¥<0.01' : `+¥${number(candidate.profitRmb, candidate.profitRmb < 1 ? 2 : 0)}`;
+      row.profit.title = `最高含反水预计利润 +¥${number(candidate.profitRmb, 2)}\nPol ${candidate.polLabel} · 皇冠 ${candidate.crownLabel}`;
+      row.profit.setAttribute('aria-label', row.profit.title);
+    } else {
+      row.profit.textContent = '';
+      row.profit.removeAttribute('title');
+      row.profit.removeAttribute('aria-label');
+    }
+    if (row.title !== event.title) {
+      const teams = gameTeams(event); row.teams.replaceWith(teams); row.teams = teams; row.title = event.title;
+    }
+    keep.add(key);
+    children.push(button);
   }
+  if (!events.length) children.push(empty('暂无比赛', emptyDetail, '◷'));
+  for (const [key, row] of gameRows) if (!keep.has(key)) { row.root.remove(); gameRows.delete(key); }
+  const desired = new Set(children);
+  for (const child of [...nodes.games.children]) if (!desired.has(child)) child.remove();
+  children.forEach((child, index) => {
+    if (nodes.games.children[index] !== child) nodes.games.insertBefore(child, nodes.games.children[index] ?? null);
+  });
+  if (focused?.isConnected && document.activeElement !== focused) focused.focus({ preventScroll: true });
+  else if (focused && !focused.isConnected) (nodes.games.querySelector('.selected') ?? nodes.games).focus({ preventScroll: true });
   nodes.games.scrollTop = scrollTop;
   nodes.games.scrollLeft = scrollLeft;
 }
@@ -219,6 +299,16 @@ function renderMarkets() {
     nodes.book.scrollTop = bookScrollTop;
   });
   renderPriceHistory();
+  renderHedge();
+}
+
+function renderHedge() {
+  const scrollTop = nodes.markets.scrollTop;
+  preservePageScroll(() => {
+    hedgePanel.update({ state, eventId: selectedEvent, connected: transportConnected,
+      featuredOpportunityId: profitableGames.get(selectedEvent)?.id });
+    nodes.markets.scrollTop = scrollTop;
+  });
 }
 
 function renderPriceHistory() {
@@ -234,11 +324,14 @@ function renderMarketsContent() {
   const scrollTop = renderedMarketEvent === game?.id ? nodes.markets.scrollTop : 0;
   renderedMarketEvent = game?.id;
   nodes['match-heading'].replaceChildren();
-  nodes.markets.replaceChildren();
+  // Keep the calculator's controls mounted while live market cards are rebuilt.
+  if (hedgePanel.element.parentElement !== nodes.markets) nodes.markets.append(hedgePanel.element);
+  for (const child of [...nodes.markets.children]) if (child !== hedgePanel.element) child.remove();
   nodes['market-link'].classList.add('hidden');
   if (!game) {
     bookPanel.classList.add('hidden');
-    nodes.markets.append(empty('等待赛程', '获得比赛后，这里会列出可用盘口及各结果报价。', '◈'));
+    nodes.markets.insertBefore(empty('等待赛程', '获得比赛后，这里会列出可用盘口及各结果报价。', '◈'), hedgePanel.element);
+    nodes.markets.scrollTop = 0;
     return;
   }
   nodes['match-heading'].append(
@@ -343,10 +436,10 @@ function renderMarketsContent() {
       selector.append(arrow('‹', '向左查看更多分值', -1), strip, arrow('›', '向右查看更多分值', 1));
       strip.addEventListener('scroll', () => lineScroll.set(key, strip.scrollLeft), { passive: true });
       card.append(selector);
-      nodes.markets.append(card);
+      nodes.markets.insertBefore(card, hedgePanel.element);
       const active = strip.querySelector('.active');
       strip.scrollLeft = lineScroll.get(key) ?? (active ? Math.max(0, active.offsetLeft - strip.clientWidth / 2) : 0);
-    } else nodes.markets.append(card);
+    } else nodes.markets.insertBefore(card, hedgePanel.element);
     if (isExpanded) {
       card.append(bookPanel);
       bookPanel.classList.remove('hidden');
@@ -354,7 +447,7 @@ function renderMarketsContent() {
   }
   if (!nodes.markets.contains(bookPanel)) {
     bookPanel.classList.add('hidden');
-    nodes.markets.append(bookPanel);
+    nodes.markets.insertBefore(bookPanel, hedgePanel.element);
   }
   nodes.markets.scrollTop = scrollTop;
 }
@@ -366,7 +459,6 @@ function renderStats() {
   nodes['stat-spread'].textContent = quote.ask !== null && quote.bid !== null ? cents(quote.ask - quote.bid) : '—';
   const depth = [...quote.bids, ...quote.asks].reduce((total, level) => total + level.price * level.size, 0);
   nodes['stat-depth'].textContent = quote.book ? money(depth) : '—';
-  nodes['game-count'].textContent = `${state.events.length} 场比赛`;
   nodes['date-range'].textContent = ({ upcoming: '今天及未来两天', past: '今天及过去两天', both: '前两天至后两天 · 共 5 天' })[state.range] || '按所选时区筛选';
 }
 
@@ -388,27 +480,36 @@ function orderRows(levels, side, maxDepth) {
 }
 
 function renderBook() {
+  if (bookPanel.classList.contains('hidden')) return;
+  const selection = selectedOutcome();
+  const quote = selection ? quotes(selection.outcome.tokenId) : null;
+  const signature = JSON.stringify([selectedToken, visibleDepth, state.mode, selection?.market,
+    activeGame()?.title, Boolean(quote?.book), quote?.book?.error, quote?.bids, quote?.asks]);
+  if (signature === renderedBookSignature) {
+    renderBookFreshness();
+    return;
+  }
   const scrollTop = renderedBookToken === selectedToken ? nodes.book.scrollTop : 0;
   const marketScrollTop = nodes.markets.scrollTop;
-  preservePageScroll(renderBookContent);
+  preservePageScroll(() => renderBookContent(selection, quote));
   // Rebuilding the depth rows can temporarily shrink the outer scroll area.
   nodes.markets.scrollTop = marketScrollTop;
   nodes.book.scrollTop = scrollTop;
   renderedBookToken = selectedToken;
+  renderedBookSignature = signature;
+  renderBookFreshness();
 }
 
-function renderBookContent() {
+function renderBookContent(selection, quote) {
   nodes['book-selection'].replaceChildren();
   nodes['book-summary'].replaceChildren();
   nodes.book.replaceChildren();
-  const selection = selectedOutcome();
   if (!selection) {
     nodes.book.append(empty('等待订单簿', '选择比赛与市场结果，查看买卖两侧挂单。', '≋'));
     nodes['book-footnote'].textContent = '订单簿数据尚未加载';
     return;
   }
   const { market, outcome } = selection;
-  const quote = quotes(outcome.tokenId);
   nodes['book-selection'].append(el('span', 'market-type-label', typeName(market.type)), el('h3', '', outcomeTitle(outcome, market)), el('p', '', marketTitle(market, activeGame())));
   nodes['book-mode'].textContent = state.mode === 'demo' ? '模拟行情' : '实时买卖挂单';
   if (!quote.book) {
@@ -432,50 +533,76 @@ function renderBookContent() {
     nodes.book.append(el('div', 'side-label bid-color', `买方挂单 · ${quote.bids.length} 档`));
     nodes.book.append(quote.bids.length ? orderRows(quote.bids, 'bids', maxDepth) : el('div', 'no-side', '暂无买单'));
   }
-  const bookVerifiedAt = quote.book.verifiedAt || quote.book.updatedAt;
+}
+
+function renderBookFreshness() {
+  const book = state?.books?.[selectedToken];
+  if (!book) return;
+  const bookVerifiedAt = book.verifiedAt || book.updatedAt;
   const age = bookVerifiedAt ? Math.max(0, Math.floor((Date.now() - new Date(bookVerifiedAt).getTime()) / 1000)) : null;
   const timeOptions = { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
-  nodes['book-footnote'].textContent = `${state.mode === 'demo' ? '模拟快照' : state.stream?.connected ? '实时推送' : '3 秒快照'} · 快照 ${quote.book.updatedAt ? date(quote.book.updatedAt, timeOptions) : '时间未知'}${quote.book.verifiedAt ? ` · 核验 ${date(quote.book.verifiedAt, timeOptions)}` : ''}${age > 30 ? ' · 数据已过期' : ''}\n每侧显示最优 ${visibleDepth} 档，按最优价起累计；金额 = 价格 × 份额。`;
+  nodes['book-footnote'].textContent = `${state.mode === 'demo' ? '模拟快照' : state.stream?.connected ? '实时推送' : '3 秒快照'} · 快照 ${book.updatedAt ? date(book.updatedAt, timeOptions) : '时间未知'}${book.verifiedAt ? ` · 核验 ${date(book.verifiedAt, timeOptions)}` : ''}${age > 30 ? ' · 数据已过期' : ''}\n每侧显示最优 ${visibleDepth} 档，按最优价起累计；金额 = 价格 × 份额。`;
   nodes['book-footnote'].classList.toggle('stale', age > 30);
 }
 
 function render() {
   if (!state) return;
+  refreshProfitableGames();
   if (!state.events.some(event => event.id === selectedEvent)) {
-    const preferredEvent = state.events.find(event => event.markets.some(market => market.acceptingOrders && !market.closed && primaryTypes.has(market.type))) || state.events.find(event => event.markets.some(market => market.acceptingOrders && !market.closed)) || state.events[0];
-    expandedMarketKey = null;
-    selectedEvent = preferredEvent?.id || null;
-    selectedToken = preferredOutcome(preferredEvent);
+    const preferredEvent = state.events.find(event => event.markets.some(market => market.acceptingOrders && !market.closed && primaryTypes.has(market.type))) || state.events[0];
+    selectGame(preferredEvent);
   }
   if (!selectedOutcome()) selectedToken = preferredOutcome(activeGame());
   renderGames(); renderMarkets(); renderBook(); renderStats(); status();
 }
 
 function acceptState(next) {
-  if (!next || !Array.isArray(next.events) || !next.books) return;
+  if (!isMarketState(next)) return false;
   localError = null;
   state = next;
-  render();
+  if (pendingRender === null) pendingRender = requestAnimationFrame(() => {
+    pendingRender = null;
+    render();
+  });
+  return true;
 }
 
-async function init() {
+function init() {
   nodes.games.append(empty('正在获取比赛', '正在读取预测市场的美职篮赛程与盘口。', '◷'));
-  try {
-    const response = await fetch('/api/state');
-    if (!response.ok) throw new Error(`服务响应 ${response.status}`);
-    acceptState(await response.json());
-  } catch (error) {
-    localError = `无法连接监控服务：${error.message}。页面会自动尝试重新连接。`;
-    status();
-  }
-  const stream = new EventSource('/api/stream');
-  stream.addEventListener('open', () => { transportConnected = true; status(); renderPriceHistory(); });
+  let hasBaseline = false;
+  const stream = new EventSource('/api/stream?delta=1');
+  stream.addEventListener('open', () => { hasBaseline = false; });
   stream.addEventListener('state', event => {
-    try { acceptState(JSON.parse(event.data)); } catch { /* Wait for the next valid snapshot. */ }
+    try {
+      const next = JSON.parse(event.data);
+      if (!isMarketState(next)) return;
+      hasBaseline = true;
+      transportConnected = true;
+      acceptState(next);
+    } catch { /* Wait for the next valid baseline. */ }
   });
-  stream.addEventListener('error', () => { transportConnected = false; status(); renderPriceHistory(); });
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) fetch('/api/state').then(response => response.ok ? response.json() : null).then(acceptState).catch(() => {}); });
-  setInterval(() => { status(); if (state) renderBook(); }, 1000);
+  stream.addEventListener('patch', event => {
+    if (!hasBaseline) return;
+    try { acceptState(mergeStatePatch(state, JSON.parse(event.data))); } catch { /* Ignore malformed patches. */ }
+  });
+  stream.addEventListener('error', () => {
+    hasBaseline = false;
+    transportConnected = false;
+    if (!state) localError = '无法连接监控服务，正在自动重连。';
+    if (state) render();
+    else status();
+  });
+  // The live stream supplies the latest state even in background tabs. Avoid a
+  // separate visibility fetch that could overwrite newer patches with old data.
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && state) acceptState(state); });
+  setInterval(() => {
+    status();
+    if (!state) return;
+    refreshProfitableGames();
+    renderGames();
+    renderHedge();
+    renderBook();
+  }, 1000);
 }
 
 const historyPanel = createPriceHistoryPanel(document.getElementById('price-history'), {
@@ -489,6 +616,19 @@ const historyPanel = createPriceHistoryPanel(document.getElementById('price-hist
     selectedToken = correspondingOutcome(selectedOutcome()?.outcome, market)?.tokenId ?? null;
     if (expandedMarketKey && expandedMarketKey !== `${game.id}:${type}`) expandedMarketKey = null;
     renderMarkets(); renderBook(); renderStats();
+  },
+});
+
+const hedgePanel = createHedgePanel({
+  onSettingsChange: () => render(),
+  onSelect(candidate) {
+    const event = state?.events.find(item => item.id === candidate.eventId);
+    const market = event?.markets.find(item => item.id === candidate.marketId && item.type === candidate.type);
+    if (!market?.outcomes.some(outcome => outcome.tokenId === candidate.polTokenId)) return;
+    selectOpportunity(candidate);
+    render();
+    const card = [...nodes.markets.querySelectorAll('.market-card')].find(item => item.dataset.marketId === market.id);
+    if (card) nodes.markets.scrollTop += card.getBoundingClientRect().top - nodes.markets.getBoundingClientRect().top - 12;
   },
 });
 

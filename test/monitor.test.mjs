@@ -290,3 +290,66 @@ test('reconnect invalidates depth and accepts an older full snapshot as a fresh 
   reconnected.message({ event_type: 'book', ...snapshot('1001', 9999), bids: [] });
   assert.deepEqual(monitor.snapshot().books['1001'].bids, [{ price: 0.51, size: 35 }], 'once healthy, the normal stale-snapshot guard applies again');
 });
+
+test('REST loads at most four batches concurrently and publishes ready books without waiting for slow batches', async t => {
+  const requests = [];
+  let inFlight = 0;
+  let peak = 0;
+  const upstream = fakeUpstream({
+    books: ids => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      return new Promise(resolve => requests.push({
+        ids,
+        finish() { inFlight--; resolve(ids.map(id => snapshot(id))); },
+      }));
+    },
+  });
+  const monitor = new Monitor({ upstream });
+  t.after(() => monitor.stop());
+  monitor.stopped = false;
+  monitor.tokens = Array.from({ length: 250 }, (_, i) => String(1000 + i));
+  monitor.state.eventsUpdatedAt = new Date().toISOString();
+  const published = [];
+  monitor.on('state', state => published.push(Object.keys(state.books).length));
+  const pending = monitor.refreshBooks();
+  assert.equal(requests.length, 4);
+  assert.ok(requests.every(request => request.ids.length === 50));
+  await monitor.refreshBooks();
+  assert.equal(requests.length, 4, 'a concurrent refresh must reuse the active round');
+
+  requests[0].finish();
+  await until(() => requests.length === 5);
+  await until(() => published.length > 0);
+  assert.equal(published[0], 50, 'the first ready batch must reach the page while others are still pending');
+  assert.equal(monitor.booksPending, true);
+  assert.equal(peak, 4, 'parallelism stays bounded while the queue advances');
+  for (const request of requests.slice(1)) request.finish();
+  await pending;
+  assert.equal(Object.keys(monitor.snapshot().books).length, 250);
+  assert.equal(new Set(requests.flatMap(request => request.ids)).size, 250);
+  assert.equal(monitor.snapshot().status, 'live');
+});
+
+test('100ms publication coalesces UI updates while quote history still sees every transition', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const monitor = new Monitor({ upstream: fakeUpstream() });
+  t.after(() => monitor.stop());
+  monitor.stopped = false;
+  monitor.tokens = ['1001'];
+  const prices = [];
+  let publications = 0;
+  monitor.on('quotes', () => prices.push(monitor.snapshot().books['1001'].bids[0]?.size));
+  monitor.on('state', () => publications++);
+  monitor.applyMessage({ event_type: 'book', ...snapshot('1001', 1000) });
+  for (const [timestamp, size] of [[1001, '7'], [1002, '10']]) {
+    monitor.applyMessage({ event_type: 'price_change', timestamp: String(timestamp), price_changes: [
+      { asset_id: '1001', side: 'BUY', price: '0.5', size },
+    ] });
+  }
+  assert.deepEqual(prices, [10, 7, 10], 'A → B → A must not be lost to UI batching');
+  t.mock.timers.tick(99);
+  assert.equal(publications, 0);
+  t.mock.timers.tick(1);
+  assert.equal(publications, 1);
+});

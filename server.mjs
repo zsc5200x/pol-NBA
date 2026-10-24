@@ -7,10 +7,12 @@ import { Monitor } from './src/monitor.mjs';
 import { PriceHistory } from './src/price-history.mjs';
 import { CrownMonitor } from './src/crown/monitor.mjs';
 import { CrownLoginError, CrownLoginService } from './src/crown/login.mjs';
+import { StateStream } from './src/state-stream.mjs';
 
 const PUBLIC = fileURLToPath(new URL('./public/', import.meta.url));
 const DEFAULT_CROWN_CONFIG = resolve('.local/crown/live-config.json');
 const FILES = new Map([['/', 'index.html'], ['/app.js', 'app.js'], ['/chinese.js', 'chinese.js'], ['/market-lines.js', 'market-lines.js'], ['/price-history.js', 'price-history.js'], ['/crown-login.js', 'crown-login.js'], ['/styles.css', 'styles.css']]);
+for (const filename of ['hedge-calculator.js', 'hedge-panel.js', 'hedge.css', 'state-stream.js']) FILES.set(`/${filename}`, filename);
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
 
 function isLoopback(address = '') {
@@ -53,18 +55,16 @@ function crownConfigPath(monitor) {
 }
 
 export function createApp({ monitor = new Monitor(), crown = new CrownMonitor({ configPath: crownConfigPath(monitor) }), crownLogin = new CrownLoginService(), priceHistory = new PriceHistory({ monitor, crown, filename: monitor.demo ? ':memory:' : process.env.PRICE_HISTORY_DB_PATH ?? resolve('.local/price-history.sqlite') }) } = {}) {
-  const clients = new Set();
-  const send = (response, state) => {
-    if (response.writableLength > 2 * 1024 * 1024) { response.destroy(); return; }
-    response.write(`event: state\ndata: ${JSON.stringify(state)}\n\n`);
-  };
+  const stream = new StateStream();
   const snapshot = () => {
     const marketState = monitor.snapshot();
     return { ...marketState, crown: crown.snapshot(marketState) };
   };
-  const broadcast = () => { const state = snapshot(); for (const response of clients) send(response, state); };
+  const broadcast = () => { if (stream.clients.size) stream.publish(snapshot()); };
   monitor.on('state', broadcast);
   crown.on?.('state', broadcast);
+  const onSessionSaved = () => { void crown.refreshAfterLogin?.(); };
+  crownLogin.on?.('sessionSaved', onSessionSaved);
   const server = http.createServer(async (request, response) => {
     const url = new URL(request.url, 'http://localhost');
     response.setHeader('X-Content-Type-Options', 'nosniff');
@@ -134,9 +134,8 @@ export function createApp({ monitor = new Monitor(), crown = new CrownMonitor({ 
     }
     if (request.method === 'GET' && url.pathname === '/api/stream') {
       response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
-      clients.add(response);
-      send(response, snapshot());
-      request.on('close', () => clients.delete(response));
+      stream.add(response, snapshot(), { delta: url.searchParams.get('delta') === '1' });
+      request.on('close', () => stream.remove(response));
       return;
     }
     if (request.method === 'POST' && url.pathname === '/api/settings') {
@@ -168,11 +167,11 @@ export function createApp({ monitor = new Monitor(), crown = new CrownMonitor({ 
     }
     json(404, { error: 'Not found' });
   });
-  const heartbeat = setInterval(() => { for (const response of clients) response.write(': heartbeat\n\n'); }, 15000);
+  const heartbeat = setInterval(() => stream.heartbeat(), 15000);
   heartbeat.unref();
-  server.on('close', () => { clearInterval(heartbeat); monitor.off('state', broadcast); crown.off?.('state', broadcast); priceHistory.close(); });
+  server.on('close', () => { clearInterval(heartbeat); monitor.off('state', broadcast); crown.off?.('state', broadcast); crownLogin.off?.('sessionSaved', onSessionSaved); priceHistory.close(); });
   server.on('listening', () => { crown.start(); void crownLogin.startMonitoring?.(); });
-  return { server, monitor, crown, crownLogin, priceHistory, close: () => { monitor.stop(); for (const client of clients) client.end(); void Promise.all([crown.stop(), crownLogin.close()]).finally(() => server.close()); } };
+  return { server, monitor, crown, crownLogin, priceHistory, close: () => { monitor.stop(); stream.close(); void Promise.all([crown.stop(), crownLogin.close()]).finally(() => server.close()); } };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

@@ -46,6 +46,79 @@ test('missing and ambiguous times never become a falsely matched NBA game; unkno
  const r=parseList(data,{...listProfile,pagination:null},'today');assert.equal(r.matches.length,0);assert.equal(r.issues.length,2);assert.equal(r.paginationVerified,false);
  assert.throws(()=>parseList({response:{more:'yes',games:[]}},listProfile,'today'),/PAGINATION_UNKNOWN/);
 });
+test('explicit successful noData list is empty, while nonempty, failed or multipage responses stay unconfirmed',()=>{
+ const profile={...listProfile,recordsPath:'response.*',pagination:{reviewed:true,hasMorePath:'phpData.PAGECOUNT',moreValues:[],endValues:['0','1']}};
+ const empty={status:'success',response:[],phpData:{NOWSHOWTYPE:'early',TOTALDATACOUNT:0,CODE:'noData',ERROR:'noData'}};
+ const result=parseList(empty,profile,'early');
+ assert.equal(result.matches.length,0);assert.equal(result.paginationVerified,true);assert.equal(result.more,false);
+ for(const invalid of [
+  {...empty,status:'error'},
+  {...empty,response:[matchRaw()]},
+  {...empty,phpData:{...empty.phpData,PAGECOUNT:2}},
+  {...empty,phpData:{...empty.phpData,TOTALDATACOUNT:1}},
+  {...empty,phpData:{...empty.phpData,NOWSHOWTYPE:'today'}},
+  {...empty,phpData:{...empty.phpData,CODE:'error'}},
+  {...empty,phpData:{}},
+ ])assert.throws(()=>parseList(invalid,profile,'early'),/PAGINATION_UNKNOWN/);
+});
+const fullPageProfile = {
+ ...listProfile, recordsPath:'response.*',
+ fields:{id:'GID',leagueId:'LID',league:'LEAGUE',home:'TEAM_H',away:'TEAM_C',startTime:'GAME_DATE_TIME'},
+ pagination:{reviewed:true,hasMorePath:'phpData.PAGECOUNT',moreValues:[],endValues:['0','1']},
+};
+const fullPageResponse = () => ({
+ status:'success',
+ response:Object.fromEntries(Array.from({length:92},(_,index)=>[`GAME_${index}`,{
+  GID:String(10636852+index),LID:index<12?'100828':'100761',LEAGUE:index<12?'NBA 美国职业篮球联赛':'其他联赛',
+  TEAM_H:'洛杉矶湖人',TEAM_C:'金州勇士',GAME_DATE_TIME:'2026-10-23T19:00:00Z',
+ }])),
+ phpData:{NOWSHOWTYPE:'today',TOTALDATACOUNT:92,PAGECOUNT:2,CODE:'hasData'},
+});
+test('Crown UI page count does not discard a complete 92-record response containing 12 NBA games',()=>{
+ const root=fullPageResponse();
+ for(const metadata of [{PAGECOUNT:2,TOTALDATACOUNT:92},{PAGECOUNT:'3',TOTALDATACOUNT:'92'}]){
+  const result=parseList({...root,phpData:{...root.phpData,...metadata}},fullPageProfile,'today');
+  assert.equal(result.matches.length,12);assert.equal(result.issues.length,0);
+  assert.equal(result.paginationVerified,true);assert.equal(result.more,false);assert.equal(result.next,null);
+ }
+ const unreviewed=parseList(root,{...fullPageProfile,pagination:{...fullPageProfile.pagination,reviewed:false}},'today');
+ assert.equal(unreviewed.paginationVerified,false);
+ const otherPath={...fullPageProfile,pagination:{...fullPageProfile.pagination,hasMorePath:'phpData.OTHERCOUNT'}};
+ assert.throws(()=>parseList({...root,phpData:{...root.phpData,OTHERCOUNT:2}},otherPath,'today'),/PAGINATION_UNKNOWN/);
+});
+test('full-response pagination proof rejects missing pages, duplicate IDs and malformed raw records or metadata',()=>{
+ const invalidCases=[
+  ['missing page',root=>{delete root.response.GAME_91;}],
+  ['filtered NBA count is not raw total',root=>{root.phpData.TOTALDATACOUNT=12;}],
+  ['duplicate GID',root=>{root.response.GAME_91.GID=root.response.GAME_0.GID;}],
+  ['numeric duplicate GID',root=>{root.response.GAME_91.GID=Number(root.response.GAME_0.GID);}],
+  ['missing GID',root=>{delete root.response.GAME_91.GID;}],
+  ['invalid GID',root=>{root.response.GAME_91.GID='invalid';}],
+  ['unsafe numeric GID',root=>{root.response.GAME_91.GID=Number.MAX_SAFE_INTEGER+1;}],
+  ['null row',root=>{root.response.GAME_91=null;}],
+  ['array row',root=>{root.response.GAME_91=[];}],
+  ['non-game key',root=>{root.response.METADATA=root.response.GAME_91;delete root.response.GAME_91;}],
+  ['noncanonical game key',root=>{root.response.GAME_091=root.response.GAME_91;delete root.response.GAME_91;}],
+  ['gap in game keys',root=>{root.response.GAME_92=root.response.GAME_91;delete root.response.GAME_91;}],
+  ['array response',root=>{root.response=Object.values(root.response);}],
+  ['empty response',root=>{root.response={};}],
+  ['unsuccessful response',root=>{root.status='error';}],
+  ['wrong source mode',root=>{root.phpData.NOWSHOWTYPE='early';}],
+  ['wrong data code',root=>{root.phpData.CODE='noData';}],
+  ['missing total',root=>{delete root.phpData.TOTALDATACOUNT;}],
+  ['zero total',root=>{root.phpData.TOTALDATACOUNT=0;}],
+  ['fractional total',root=>{root.phpData.TOTALDATACOUNT=92.5;}],
+  ['invalid total type',root=>{root.phpData.TOTALDATACOUNT=[92];}],
+  ['missing page count',root=>{delete root.phpData.PAGECOUNT;}],
+  ['fractional page count',root=>{root.phpData.PAGECOUNT=2.5;}],
+  ['invalid page count',root=>{root.phpData.PAGECOUNT='unknown';}],
+  ['page count exceeds total',root=>{root.phpData.PAGECOUNT=93;}],
+ ];
+ for(const [name,mutate] of invalidCases){
+  const root=fullPageResponse();mutate(root);
+  assert.throws(()=>parseList(root,fullPageProfile,'today'),/PAGINATION_UNKNOWN/,name);
+ }
+});
 test('full-game parent gating excludes half-game and unrelated subrecords; away-reference spread sign converts to home',()=>{
  const r=parseMarkets(payload(),detail,match(),'today');assert.equal(r.markets.length,3);
  const spread=r.markets.find(m=>m.type==='spreads');assert.equal(spread.line,3.5);assert.equal(spread.sides.find(s=>s.direction==='away').line,-3.5);
@@ -131,6 +204,28 @@ test('a failed cycle resumes after configuration/session repair without overlapp
  const f=await configFixture(t);let fail=true;const {CrownError}=await import('../src/crown/parser.mjs');const monitor=new CrownMonitor({configPath:f.path,store:new CrownStore(),clientFactory:()=>({request:async(mode,p,args)=>{if(fail)throw new CrownError('SESSION_EXPIRED');return JSON.stringify(args.gid?payload():{response:{more:'no',games:[matchRaw()]}});},cancel(){}})});monitor.running=true;t.after(()=>monitor.stop());
  await monitor.cycle();assert.equal(monitor.state.errorCode,'SESSION_EXPIRED');assert.equal(monitor.state.lastSuccessAt,null);
  fail=false;await monitor.cycle();assert.equal(monitor.state.status,'running');assert.equal(monitor.state.collectedIds.length,1);assert.ok(monitor.state.lastSuccessAt);
+});
+
+test('doubleLogin is a session rejection, while unknown response shapes remain unconfirmed',async t=>{
+ const f=await configFixture(t);let body='<serverresponse><code>error</code><msg>doubleLogin</msg></serverresponse>';
+ const monitor=new CrownMonitor({configPath:f.path,store:new CrownStore(),clientFactory:()=>({request:async()=>body,cancel(){}})});
+ monitor.running=true;t.after(()=>monitor.stop());
+ await monitor.cycle();assert.equal(monitor.state.errorCode,'SESSION_EXPIRED');assert.equal(monitor.state.collectedIds.length,0);
+ body='<serverresponse><msg>maintenance</msg></serverresponse>';
+ await monitor.cycle();assert.equal(monitor.state.errorCode,'UNEXPECTED_RESPONSE');
+});
+
+test('saving a new login clears retry backoff and queues one refresh after a pending cycle',async t=>{
+ const monitor=new CrownMonitor({configPath:'synthetic-only',store:new CrownStore()});t.after(()=>monitor.stop());
+ let release,entered;const gate=new Promise(resolve=>{release=resolve;});const started=new Promise(resolve=>{entered=resolve;});
+ let calls=0,active=0,maxActive=0;
+ monitor.runCycle=async()=>{calls++;active++;maxActive=Math.max(maxActive,active);if(calls===1){entered();await gate;}monitor.failureCount=0;active--;};
+ monitor.running=true;monitor.failureCount=4;
+ const first=monitor.refreshAfterLogin();await started;
+ monitor.refreshAfterLogin();monitor.refreshAfterLogin();assert.equal(calls,1);
+ release();await first;
+ await new Promise((resolve,reject)=>{const timeout=setTimeout(()=>reject(new Error('refresh did not start')),1000);const poll=setInterval(()=>{if(calls===2){clearTimeout(timeout);clearInterval(poll);resolve();}},5);t.after(()=>{clearTimeout(timeout);clearInterval(poll);});});
+ assert.equal(calls,2);assert.equal(maxActive,1);assert.equal(monitor.failureCount,0);
 });
 test('two Crown match IDs pointing at the same Polymarket event remain ambiguous even after UI match filtering',t=>{
  const store=new CrownStore();const monitor=new CrownMonitor({store});t.after(()=>monitor.stop());store.upsertMatch(match());store.upsertMatch(match({id:'other-id'}));monitor.state.activeIds=['100','other-id'];

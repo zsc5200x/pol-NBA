@@ -9,7 +9,8 @@ const iso = () => new Date().toISOString();
 const numeric = value => value === null || value === undefined || value === '' || !Number.isFinite(Number(value)) ? null : Number(value);
 const probability = value => { const n = numeric(value); return n !== null && n > 0 && n <= 1 ? n : null; };
 const difference = (current, previous) => current !== null && previous !== null ? Number((current - previous).toFixed(10)) : null;
-const keyOf = record => JSON.stringify([record.source, record.eventId, record.marketId]);
+const polSideKey = (eventId, marketId, tokenId) => JSON.stringify([eventId, marketId, tokenId]);
+const crownSideKey = polSideKey;
 const fresh = (time, age, now = Date.now()) => Number.isFinite(Date.parse(time)) && now - Date.parse(time) <= age;
 
 // Append every observed top-price transition; batching only groups disk writes,
@@ -19,9 +20,10 @@ export class PriceHistory extends EventEmitter {
     super();
     this.monitor = monitor;
     this.crown = crown;
-    this.current = new Map();
     this.marketIndex = new Map();
     this.tokenIndex = new Map();
+    this.polLastValid = new Map();
+    this.polHydrated = new Set();
     this.queue = [];
     this.closed = false;
     this.error = null;
@@ -36,10 +38,42 @@ export class PriceHistory extends EventEmitter {
       );
       CREATE INDEX IF NOT EXISTS price_records_market ON price_records(event_id, market_id, id DESC);
       CREATE INDEX IF NOT EXISTS price_records_source ON price_records(event_id, type, source, id DESC);
+      CREATE TABLE IF NOT EXISTS pol_ask_history (
+        record_id INTEGER PRIMARY KEY, event_id TEXT NOT NULL, market_id TEXT NOT NULL,
+        type TEXT NOT NULL, observed_at TEXT NOT NULL, payload TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS pol_ask_history_market ON pol_ask_history(event_id, market_id, record_id DESC);
+      CREATE INDEX IF NOT EXISTS pol_ask_history_source ON pol_ask_history(event_id, type, record_id DESC);
+      CREATE TABLE IF NOT EXISTS crown_price_history (
+        record_id INTEGER PRIMARY KEY, event_id TEXT NOT NULL, market_id TEXT NOT NULL,
+        type TEXT NOT NULL, observed_at TEXT NOT NULL, payload TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS crown_price_history_market ON crown_price_history(event_id, market_id, record_id DESC);
+      CREATE INDEX IF NOT EXISTS crown_price_history_source ON crown_price_history(event_id, type, record_id DESC);
+      CREATE TABLE IF NOT EXISTS pol_ask_last (
+        event_id TEXT NOT NULL, market_id TEXT NOT NULL, token_id TEXT NOT NULL,
+        price REAL NOT NULL, observed_at TEXT NOT NULL,
+        PRIMARY KEY(event_id, market_id, token_id)
+      );
+      CREATE TABLE IF NOT EXISTS crown_price_last (
+        event_id TEXT NOT NULL, market_id TEXT NOT NULL, token_id TEXT NOT NULL,
+        price REAL NOT NULL, odds_format TEXT NOT NULL, observed_at TEXT NOT NULL,
+        PRIMARY KEY(event_id, market_id, token_id)
+      );
       CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);`);
     this.db.prepare('INSERT OR IGNORE INTO metadata(key,value) VALUES(?,?)').run('recordingSince', iso());
     this.recordingSince = this.db.prepare('SELECT value FROM metadata WHERE key=?').get('recordingSince').value;
     this.insert = this.db.prepare('INSERT INTO price_records(source,event_id,market_id,type,observed_at,payload) VALUES(?,?,?,?,?,?)');
+    this.insertPolAskHistory = this.db.prepare('INSERT OR REPLACE INTO pol_ask_history(record_id,event_id,market_id,type,observed_at,payload) VALUES(?,?,?,?,?,?)');
+    this.insertCrownHistory = this.db.prepare('INSERT OR REPLACE INTO crown_price_history(record_id,event_id,market_id,type,observed_at,payload) VALUES(?,?,?,?,?,?)');
+    this.upsertPolAskLast = this.db.prepare(`INSERT INTO pol_ask_last(event_id,market_id,token_id,price,observed_at) VALUES(?,?,?,?,?)
+      ON CONFLICT(event_id,market_id,token_id) DO UPDATE SET price=excluded.price, observed_at=excluded.observed_at`);
+    this.upsertCrownLast = this.db.prepare(`INSERT INTO crown_price_last(event_id,market_id,token_id,price,odds_format,observed_at) VALUES(?,?,?,?,?,?)
+      ON CONFLICT(event_id,market_id,token_id) DO UPDATE SET price=excluded.price, odds_format=excluded.odds_format, observed_at=excluded.observed_at`);
+    this.backfillPolHistory();
+    this.backfillCrownHistory();
+    this.crownLastValid = new Map(this.db.prepare('SELECT event_id,market_id,token_id,price,odds_format FROM crown_price_last').all()
+      .map(row => [crownSideKey(row.event_id, row.market_id, row.token_id), { price: Number(row.price), oddsFormat: row.odds_format }]));
     // Guard listeners: a storage failure must never be reported as an upstream failure.
     this.onPol = event => this.guard(() => this.capturePol(event));
     this.onMarkets = () => this.guard(() => { this.rebuildIndex(); this.capturePol(); this.captureCrown(); });
@@ -69,13 +103,11 @@ export class PriceHistory extends EventEmitter {
       const identity = JSON.stringify([event.id, market.id]);
       const entry = { event, market };
       this.marketIndex.set(identity, entry);
+      this.hydratePolMarket(event.id, market.id);
       for (const outcome of market.outcomes ?? []) {
         const entries = this.tokenIndex.get(outcome.tokenId) ?? new Set();
         entries.add(entry); this.tokenIndex.set(outcome.tokenId, entries);
       }
-    }
-    for (const previous of [...this.current.values()]) {
-      if (!this.marketIndex.has(JSON.stringify([previous.eventId, previous.marketId]))) this.markUnavailable(previous, iso(), 'market_removed');
     }
   }
 
@@ -98,11 +130,143 @@ export class PriceHistory extends EventEmitter {
         return {
           tokenId: outcome.tokenId, label: outcomeTitle(outcome, market),
           price: valid ? probability(book.asks?.[0]?.price) : null,
-          bid: valid ? probability(book.bids?.[0]?.price) : null,
           sourceAt: book?.updatedAt ?? null, verifiedAt: book?.verifiedAt ?? null,
         };
       });
-      this.record({ source: 'pol', ...this.metadata(event, market), observedAt, sides });
+      this.recordPol({ source: 'pol', ...this.metadata(event, market), observedAt, sides });
+    }
+  }
+
+  hydratePolMarket(eventId, marketId) {
+    const key = JSON.stringify([eventId, marketId]);
+    if (this.polHydrated.has(key)) return;
+    const rows = this.db.prepare('SELECT token_id,price FROM pol_ask_last WHERE event_id=? AND market_id=?').all(String(eventId), String(marketId));
+    for (const row of rows) this.polLastValid.set(polSideKey(eventId, marketId, row.token_id), Number(row.price));
+    this.polHydrated.add(key);
+  }
+
+  recordPol(candidate) {
+    const key = JSON.stringify([candidate.eventId, candidate.marketId]);
+    if (!this.polHydrated.has(key)) this.hydratePolMarket(candidate.eventId, candidate.marketId);
+    const changes = candidate.sides.map(side => {
+      const price = probability(side.price);
+      const lastKey = polSideKey(candidate.eventId, candidate.marketId, side.tokenId);
+      const previousPrice = this.polLastValid.get(lastKey) ?? null;
+      return { side, price, lastKey, previousPrice, changed: price !== null && previousPrice !== price };
+    });
+    if (!changes.some(item => item.changed)) return;
+    const hasPrevious = changes.some(item => item.previousPrice !== null);
+    const record = {
+      ...candidate, kind: hasPrevious ? 'change' : 'baseline',
+      sides: changes.map(({ side, price, previousPrice }) => ({
+        tokenId: side.tokenId, label: side.label,
+        price, previousPrice,
+        delta: price === null ? null : difference(price, previousPrice),
+        sourceAt: side.sourceAt ?? null, verifiedAt: side.verifiedAt ?? null,
+      })),
+    };
+    // Keep all valid asks independently, even when only another side changed.
+    for (const item of changes) if (item.price !== null) this.polLastValid.set(item.lastKey, item.price);
+    this.queue.push({ ...record, polAsk: true, payload: JSON.stringify(record) });
+    if (this.queue.length >= 1000) this.flush();
+    else if (!this.flushTimer) {
+      this.flushTimer = setTimeout(() => { this.flushTimer = null; this.guard(() => this.flush()); }, 100);
+      this.flushTimer.unref?.();
+    }
+  }
+
+  backfillPolHistory() {
+    const latest = this.db.prepare('SELECT event_id,market_id,token_id,price FROM pol_ask_last').all();
+    const last = new Map(latest.map(row => [polSideKey(row.event_id, row.market_id, row.token_id), Number(row.price)]));
+    const cursorStatement = this.db.prepare('SELECT value FROM metadata WHERE key=?');
+    const saveCursor = this.db.prepare(`INSERT INTO metadata(key,value) VALUES('polAskHistoryCursor',?)
+      ON CONFLICT(key) DO UPDATE SET value=excluded.value`);
+    const batchQuery = this.db.prepare("SELECT id,event_id,market_id,type,observed_at,payload FROM price_records WHERE source='pol' AND id>? ORDER BY id ASC LIMIT 500");
+    let cursor = Number(cursorStatement.get('polAskHistoryCursor')?.value ?? 0) || 0;
+    for (;;) {
+      const rows = batchQuery.all(cursor);
+      if (!rows.length) break;
+      this.db.exec('BEGIN IMMEDIATE');
+      try {
+        for (const row of rows) {
+          const legacy = JSON.parse(row.payload);
+          const sides = (legacy.sides ?? []).map(side => {
+            const price = probability(side.price);
+            const lastKey = polSideKey(row.event_id, row.market_id, side.tokenId);
+            const previousPrice = last.get(lastKey) ?? null;
+            if (price !== null) last.set(lastKey, price);
+            return {
+              tokenId: side.tokenId, label: side.label,
+              price, previousPrice,
+              delta: price === null ? null : difference(price, previousPrice),
+              sourceAt: side.sourceAt ?? null, verifiedAt: side.verifiedAt ?? null,
+            };
+          });
+          const changed = sides.some(side => side.price !== null && side.price !== side.previousPrice);
+          if (changed) {
+            const payload = JSON.stringify({
+              ...legacy, source: 'pol', kind: sides.some(side => side.previousPrice !== null) ? 'change' : 'baseline', sides,
+            });
+            this.insertPolAskHistory.run(row.id, row.event_id, row.market_id, row.type, row.observed_at, payload);
+          }
+          for (const side of sides) if (side.price !== null) {
+            this.upsertPolAskLast.run(row.event_id, row.market_id, side.tokenId, side.price, row.observed_at);
+          }
+          cursor = row.id;
+        }
+        saveCursor.run(String(cursor));
+        this.db.exec('COMMIT');
+      } catch (error) { this.db.exec('ROLLBACK'); throw error; }
+    }
+  }
+
+  backfillCrownHistory() {
+    const cursorStatement = this.db.prepare('SELECT value FROM metadata WHERE key=?');
+    const saveCursor = this.db.prepare(`INSERT INTO metadata(key,value) VALUES('crownPriceHistoryCursor',?)
+      ON CONFLICT(key) DO UPDATE SET value=excluded.value`);
+    const batchQuery = this.db.prepare("SELECT id,event_id,market_id,type,observed_at,payload FROM price_records WHERE source='crown' AND id>? ORDER BY id ASC LIMIT 500");
+    let cursor = Number(cursorStatement.get('crownPriceHistoryCursor')?.value ?? 0) || 0;
+    const last = new Map();
+    if (cursor > 0) {
+      for (const row of this.db.prepare('SELECT event_id,market_id,token_id,price,odds_format FROM crown_price_last').all()) {
+        last.set(crownSideKey(row.event_id, row.market_id, row.token_id), { price: Number(row.price), oddsFormat: row.odds_format });
+      }
+    }
+    for (;;) {
+      const rows = batchQuery.all(cursor);
+      if (!rows.length) break;
+      this.db.exec('BEGIN IMMEDIATE');
+      try {
+        for (const row of rows) {
+          const legacy = JSON.parse(row.payload);
+          let rowChanged = false;
+          const sides = (legacy.sides ?? []).map(side => {
+            const price = numeric(side.price);
+            const valid = price !== null && price !== 0 && numeric(side.decimalOdds) > 1;
+            const oddsFormat = side.oddsFormat ?? 'unknown';
+            const lastKey = crownSideKey(row.event_id, row.market_id, side.tokenId);
+            const previous = last.get(lastKey) ?? null;
+            const changed = valid && (!previous || price !== previous.price || oddsFormat !== previous.oddsFormat);
+            if (changed) rowChanged = true;
+            if (valid) last.set(lastKey, { price, oddsFormat });
+            return {
+              ...side, price: valid ? price : null,
+              previousPrice: previous?.price ?? null,
+              delta: valid && previous?.oddsFormat === oddsFormat ? difference(price, previous.price) : null,
+            };
+          });
+          if (rowChanged) {
+            const payload = JSON.stringify({ ...legacy, source: 'crown', kind: sides.some(side => side.previousPrice !== null) ? 'change' : 'baseline', sides });
+            this.insertCrownHistory.run(row.id, row.event_id, row.market_id, row.type, row.observed_at, payload);
+          }
+          for (const side of sides) if (side.price !== null) {
+            this.upsertCrownLast.run(row.event_id, row.market_id, side.tokenId, side.price, side.oddsFormat ?? 'unknown', row.observed_at);
+          }
+          cursor = row.id;
+        }
+        saveCursor.run(String(cursor));
+        this.db.exec('COMMIT');
+      } catch (error) { this.db.exec('ROLLBACK'); throw error; }
     }
   }
 
@@ -111,7 +275,6 @@ export class PriceHistory extends EventEmitter {
     if (!this.crown || state?.mode !== 'live') return;
     const now = iso();
     const snapshot = this.crown.snapshot(state);
-    const seen = new Set();
     for (const match of snapshot.matches ?? []) {
       if (match.comparison?.status !== 'matched') continue;
       const event = state.events.find(item => item.id === match.comparison.polEventId);
@@ -122,7 +285,7 @@ export class PriceHistory extends EventEmitter {
         const raw = match.markets.find(item => item.key === comparison.crownKey);
         if (!market || !raw) continue;
         const healthy = this.crown.lastDetailState?.get(match.id)?.healthy === true && snapshot.status !== 'blocked';
-        const valid = healthy && raw.status === 'open' && raw.parseStatus === 'parsed' && fresh(raw.checkedAt, Math.max(90000, (this.crown.config?.intervalMs ?? 0) * 3));
+        const valid = healthy && raw.status === 'open' && ['parsed', 'incomplete_odds'].includes(raw.parseStatus) && fresh(raw.checkedAt, Math.max(90000, (this.crown.config?.intervalMs ?? 0) * 3));
         const record = {
           source: 'crown', ...this.metadata(event, market), observedAt: now,
           sourceAt: raw.checkedAt, crownMatchId: match.id, crownKey: raw.key, crownLine: raw.line,
@@ -138,43 +301,32 @@ export class PriceHistory extends EventEmitter {
             };
           }),
         };
-        seen.add(keyOf(record)); this.record(record);
+        this.recordCrown(record);
       }
     }
-    for (const previous of [...this.current.values()]) {
-      if (previous.source === 'crown' && !seen.has(keyOf(previous))) this.markUnavailable(previous, now, 'quote_missing');
-    }
   }
 
-  markUnavailable(previous, observedAt, reason) {
-    this.record({ ...previous, observedAt, reason, sides: previous.sides.map(side => ({ ...side, price: null, bid: side.bid === undefined ? undefined : null, decimalOdds: side.decimalOdds === undefined ? undefined : null })) });
-  }
-
-  record(candidate) {
-    const key = keyOf(candidate);
-    const previous = this.current.get(key);
-    const fingerprint = record => JSON.stringify(record.sides.map(side => [side.tokenId, side.price, side.bid ?? null, side.oddsFormat ?? null, side.decimalOdds ?? null]));
-    if (previous && fingerprint(previous) === fingerprint(candidate)) return;
-    // An empty initial quote is not a baseline, and repeated failures do not add rows.
-    if (!previous && !candidate.sides.some(side => side.price !== null || side.bid != null)) return;
-    const lost = previous && candidate.sides.some((side, i) => side.price === null && previous.sides[i]?.price != null);
-    const recovered = previous && candidate.sides.some((side, i) => side.price !== null && previous.sides[i]?.price == null);
-    const kind = !previous ? 'baseline' : lost ? 'unavailable' : recovered ? 'recovered' : 'change';
+  recordCrown(candidate) {
+    const changes = candidate.sides.map(side => {
+      const price = numeric(side.price);
+      const valid = price !== null && price !== 0 && numeric(side.decimalOdds) > 1;
+      const oddsFormat = side.oddsFormat ?? 'unknown';
+      const lastKey = crownSideKey(candidate.eventId, candidate.marketId, side.tokenId);
+      const previous = this.crownLastValid.get(lastKey) ?? null;
+      return { side, price: valid ? price : null, valid, oddsFormat, lastKey, previous,
+        changed: valid && (!previous || price !== previous.price || oddsFormat !== previous.oddsFormat) };
+    });
+    if (!changes.some(item => item.changed)) return;
     const record = {
-      ...candidate, kind,
-      sides: candidate.sides.map(side => {
-        const old = previous?.sides.find(item => item.tokenId === side.tokenId);
-        const sameFormat = !previous || candidate.source !== 'crown' || old?.oddsFormat === side.oddsFormat;
-        return {
-          ...side, previousPrice: old?.price ?? null,
-          delta: sameFormat ? difference(side.price, old?.price ?? null) : null,
-          ...(side.bid !== undefined ? { previousBid: old?.bid ?? null, bidDelta: difference(side.bid, old?.bid ?? null) } : {}),
-        };
-      }),
+      ...candidate, kind: changes.some(item => item.changed && item.previous) ? 'change' : 'baseline',
+      sides: changes.map(({ side, price, oddsFormat, previous }) => ({
+        ...side, price, oddsFormat,
+        previousPrice: previous?.price ?? null,
+        delta: previous?.oddsFormat === oddsFormat ? difference(price, previous.price) : null,
+      })),
     };
-    this.current.set(key, record);
-    // Serialize immediately: later in-place order book updates cannot rewrite queued history.
-    this.queue.push({ ...record, payload: JSON.stringify(record) });
+    for (const item of changes) if (item.valid) this.crownLastValid.set(item.lastKey, { price: item.price, oddsFormat: item.oddsFormat });
+    this.queue.push({ ...record, crownPrice: true, payload: JSON.stringify(record) });
     if (this.queue.length >= 1000) this.flush();
     else if (!this.flushTimer) {
       this.flushTimer = setTimeout(() => { this.flushTimer = null; this.guard(() => this.flush()); }, 100);
@@ -187,7 +339,27 @@ export class PriceHistory extends EventEmitter {
     const rows = this.queue.slice();
     this.db.exec('BEGIN IMMEDIATE');
     try {
-      for (const row of rows) this.insert.run(row.source, row.eventId, row.marketId, row.type, row.observedAt, row.payload);
+      for (const row of rows) {
+        this.insert.run(row.source, row.eventId, row.marketId, row.type, row.observedAt, row.payload);
+        if (row.polAsk) {
+          const id = Number(this.db.prepare('SELECT last_insert_rowid() AS id').get().id);
+          this.insertPolAskHistory.run(id, row.eventId, row.marketId, row.type, row.observedAt, row.payload);
+          for (const side of row.sides) if (side.price !== null) {
+            this.upsertPolAskLast.run(row.eventId, row.marketId, side.tokenId, side.price, row.observedAt);
+          }
+          this.db.prepare(`INSERT INTO metadata(key,value) VALUES('polAskHistoryCursor',?)
+            ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run(String(id));
+        }
+        if (row.crownPrice) {
+          const id = Number(this.db.prepare('SELECT last_insert_rowid() AS id').get().id);
+          this.insertCrownHistory.run(id, row.eventId, row.marketId, row.type, row.observedAt, row.payload);
+          for (const side of row.sides) if (side.price !== null) {
+            this.upsertCrownLast.run(row.eventId, row.marketId, side.tokenId, side.price, side.oddsFormat ?? 'unknown', row.observedAt);
+          }
+          this.db.prepare(`INSERT INTO metadata(key,value) VALUES('crownPriceHistoryCursor',?)
+            ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run(String(id));
+        }
+      }
       this.db.exec('COMMIT');
     } catch (error) { this.db.exec('ROLLBACK'); throw error; }
     this.queue.splice(0, rows.length);
@@ -198,13 +370,40 @@ export class PriceHistory extends EventEmitter {
   history({ eventId, type, marketId, source, limit = 50, before } = {}) {
     this.guard(() => this.flush());
     const where = [], args = [];
-    for (const [column, value] of [['event_id', eventId], ['type', type], ['market_id', marketId], ['source', source]]) {
+    for (const [column, value] of [['event_id', eventId], ['type', type], ['market_id', marketId]]) {
       if (value !== undefined && value !== null && value !== '') { where.push(`${column} = ?`); args.push(String(value)); }
     }
     const cursor = Number(before);
-    if (before !== undefined && Number.isSafeInteger(cursor) && cursor > 0) { where.push('id < ?'); args.push(cursor); }
     const count = Math.max(1, Math.min(200, Math.floor(Number(limit)) || 50));
-    const rows = this.db.prepare(`SELECT id,payload FROM price_records${where.length ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY id DESC LIMIT ?`).all(...args, count + 1);
+    const filters = where.length ? ` AND ${where.join(' AND ')}` : '';
+    let query, queryArgs;
+    if (source === 'pol') {
+      query = `SELECT record_id AS id,payload FROM pol_ask_history WHERE 1=1${filters}${before !== undefined && Number.isSafeInteger(cursor) && cursor > 0 ? ' AND record_id < ?' : ''} ORDER BY record_id DESC LIMIT ?`;
+      queryArgs = [...args];
+      if (before !== undefined && Number.isSafeInteger(cursor) && cursor > 0) queryArgs.push(cursor);
+    } else if (source === 'crown') {
+      query = `SELECT record_id AS id,payload FROM crown_price_history WHERE 1=1${filters}${before !== undefined && Number.isSafeInteger(cursor) && cursor > 0 ? ' AND record_id < ?' : ''} ORDER BY record_id DESC LIMIT ?`;
+      queryArgs = [...args];
+      if (before !== undefined && Number.isSafeInteger(cursor) && cursor > 0) queryArgs.push(cursor);
+    } else if (source) {
+      query = `SELECT id,payload FROM price_records WHERE source=?${filters}${before !== undefined && Number.isSafeInteger(cursor) && cursor > 0 ? ' AND id < ?' : ''} ORDER BY id DESC LIMIT ?`;
+      queryArgs = [String(source), ...args];
+      if (before !== undefined && Number.isSafeInteger(cursor) && cursor > 0) queryArgs.push(cursor);
+    } else {
+      const cursorFilter = before !== undefined && Number.isSafeInteger(cursor) && cursor > 0 ? ' AND id < ?' : '';
+      query = `SELECT id,payload FROM price_records WHERE source NOT IN ('pol','crown')${filters}${cursorFilter}
+        UNION ALL SELECT record_id AS id,payload FROM pol_ask_history WHERE 1=1${filters}${before !== undefined && Number.isSafeInteger(cursor) && cursor > 0 ? ' AND record_id < ?' : ''}
+        UNION ALL SELECT record_id AS id,payload FROM crown_price_history WHERE 1=1${filters}${before !== undefined && Number.isSafeInteger(cursor) && cursor > 0 ? ' AND record_id < ?' : ''}
+        ORDER BY id DESC LIMIT ?`;
+      queryArgs = [...args];
+      if (before !== undefined && Number.isSafeInteger(cursor) && cursor > 0) queryArgs.push(cursor);
+      queryArgs.push(...args);
+      if (before !== undefined && Number.isSafeInteger(cursor) && cursor > 0) queryArgs.push(cursor);
+      queryArgs.push(...args);
+      if (before !== undefined && Number.isSafeInteger(cursor) && cursor > 0) queryArgs.push(cursor);
+    }
+    queryArgs.push(count + 1);
+    const rows = this.db.prepare(query).all(...queryArgs);
     const records = rows.slice(0, count).map(row => ({ ...JSON.parse(row.payload), id: row.id }));
     return {
       records, hasMore: rows.length > count, nextBefore: rows.length > count ? records.at(-1).id : null,

@@ -2,6 +2,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { createHash } from 'node:crypto';
 import { CrownError } from './parser.mjs';
+import { isCrownOrigin, isCrownEndpoint, crownEndpointForOrigin } from './endpoints.mjs';
 
 export const ENDPOINT = 'https://m321.mos077.com/transform.php';
 export const CORE = {
@@ -20,7 +21,7 @@ export async function verifyEvidence(evidence, base) {
 export async function loadConfig(filename) {
   const path = resolve(filename), base = dirname(path);
   const config = await readJson(path);
-  if (config.endpoint !== ENDPOINT || (config.sessionFile != null && (typeof config.sessionFile !== 'string' || !config.sessionFile))) throw new CrownError('INVALID_CONFIG');
+  if (!isCrownEndpoint(config.endpoint) || (config.sessionFile != null && (typeof config.sessionFile !== 'string' || !config.sessionFile))) throw new CrownError('INVALID_CONFIG');
   const profiles = [config.lists?.today, config.lists?.early, ...(config.details?.today ?? []), ...(config.details?.early ?? [])];
   if (profiles.slice(0, 2).some(p => !p) || !config.details?.today?.length || !config.details?.early?.length) throw new CrownError('MAPPING_UNVERIFIED');
   for (const profile of profiles) {
@@ -33,7 +34,7 @@ export async function loadConfig(filename) {
     for (const [operation, profile] of [['get_game_list', config.lists[mode]], ...config.details[mode].map(profile => ['get_game_more', profile])]) {
       await verifyEvidence(profile.requestEvidence, base);
       const captured = await readJson(resolve(base, profile.requestEvidence.path));
-      if (captured.endpoint !== ENDPOINT || captured.method !== 'POST' || captured.params?.p !== operation || captured.params?.gtype !== 'bk' || captured.params?.showtype !== mode || String(captured.params?.ltype) !== '3') throw new CrownError('REQUEST_UNVERIFIED');
+      if (captured.endpoint !== config.endpoint || captured.method !== 'POST' || captured.params?.p !== operation || captured.params?.gtype !== 'bk' || captured.params?.showtype !== mode || String(captured.params?.ltype) !== '3') throw new CrownError('REQUEST_UNVERIFIED');
       if (operation === 'get_game_more' && (captured.params?.filter !== profile.params?.filter || !/^[A-Za-z0-9_-]{1,40}$/.test(profile.id ?? ''))) throw new CrownError('REQUEST_UNVERIFIED');
       for (const [key,value] of Object.entries(profile.params ?? {})) if (String(captured.params[key]) !== String(value)) throw new CrownError('REQUEST_UNVERIFIED');
       if (config.timestamp?.reviewed && !Object.hasOwn(captured.params, config.timestamp.field ?? '')) throw new CrownError('REQUEST_UNVERIFIED');
@@ -73,14 +74,14 @@ export async function loadConfig(filename) {
   const requestGapMs = Math.max(500, Number(config.requestGapMs) || 500);
   return { ...config, intervalMs, requestGapMs, timeoutMs: Math.min(60000, Math.max(1000, Number(config.timeoutMs) || 15000)), sessionFile: config.sessionFile ? resolve(base, config.sessionFile) : null, base };
 }
-export async function loadSession(path = null) {
+export async function loadSession(path = null, { store } = {}) {
   if (!path) {
     const { CrownSessionStore, sessionCookieHeader } = await import('./login.mjs');
     let stored;
-    try { stored = await new CrownSessionStore().load(); } catch { throw new CrownError('SESSION_MISSING'); }
-    if (!stored || stored.member_origin !== new URL(ENDPOINT).origin || stored.member_protocol?.origin !== new URL(ENDPOINT).origin) throw new CrownError('SESSION_MISSING');
+    try { stored = await (store ?? new CrownSessionStore()).load(); } catch { throw new CrownError('SESSION_MISSING'); }
+    if (!stored || !isCrownOrigin(stored.member_origin) || stored.member_protocol?.origin !== stored.member_origin) throw new CrownError('SESSION_MISSING');
     const cookie = sessionCookieHeader(stored.storage_state, stored.member_origin);
-    return { params: { uid: stored.uid, ver: stored.member_protocol.ver, langx: stored.member_protocol.langx }, cookie };
+    return { endpoint: crownEndpointForOrigin(stored.member_origin), params: { uid: stored.uid, ver: stored.member_protocol.ver, langx: stored.member_protocol.langx }, cookie };
   }
   let info;
   try { info = await stat(path); } catch { throw new CrownError('SESSION_MISSING'); }
@@ -88,5 +89,8 @@ export async function loadSession(path = null) {
   const session = await readJson(path);
   if (typeof session.params?.uid !== 'string' || !session.params.uid.trim() || typeof session.params?.ver !== 'string' || !session.params.ver.trim() || typeof session.cookie !== 'string' || !session.cookie.trim()) throw new CrownError('SESSION_MISSING');
   if (/\r|\n/.test(session.cookie)) throw new CrownError('INVALID_CONFIG');
-  return session;
+  // Existing manual session files were captured against the original endpoint.
+  const endpoint = session.endpoint ?? ENDPOINT;
+  if (!isCrownEndpoint(endpoint)) throw new CrownError('INVALID_CONFIG');
+  return { ...session, endpoint };
 }

@@ -2,7 +2,7 @@ import { eventTeams, eventTitle, outcomeTitle, teamFor, timezoneName, typeName }
 
 const SOURCES = ['pol', 'crown'];
 const SOURCE_NAMES = { pol: 'Polymarket', crown: '皇冠' };
-const KINDS = { baseline: '首次记录', unavailable: '暂无有效报价', recovered: '报价恢复' };
+const KINDS = { baseline: '首次记录' };
 
 function element(tag, className = '', text = '') {
   const node = document.createElement(tag);
@@ -15,7 +15,7 @@ export function historyPrice(value, source) {
   if (!Number.isFinite(value)) return '—';
   return source === 'pol'
     ? `${new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 }).format(value * 100)} 分`
-    : value.toFixed(3);
+    : value.toFixed(2);
 }
 
 export function historyMovement(value, previous, source, explicitDelta) {
@@ -48,7 +48,8 @@ export function recordsForSelection(records, context, source) {
   return (Array.isArray(records) ? records : []).filter(record =>
     String(record.eventId) === String(context.event?.id) &&
     String(record.marketId) === String(context.market?.id) &&
-    record.type === context.type && record.source === source,
+    record.type === context.type && record.source === source &&
+    (source !== 'crown' || record.sides?.some(side => Number.isFinite(side.price))),
   ).sort((a, b) => Number(b.id) - Number(a.id));
 }
 
@@ -119,7 +120,7 @@ export function createPriceHistoryPanel(root, { onType, onMarket, intervalMs = 2
     const sourceTitle = element('h3', '', SOURCE_NAMES[source]);
     sourceTitle.id = `history-${source}-title`;
     section.setAttribute('aria-labelledby', sourceTitle.id);
-    sourceHeader.append(sourceTitle, element('span', '', source === 'pol' ? '买入价 · 分' : '原始水位'));
+    sourceHeader.append(sourceTitle, element('span', '', source === 'pol' ? '报价 · 分' : '原始水位'));
     const scroll = element('div', 'history-scroll');
     scroll.tabIndex = 0;
     scroll.setAttribute('aria-label', `${SOURCE_NAMES[source]}价格历史表，可滚动查看`);
@@ -160,8 +161,8 @@ export function createPriceHistoryPanel(root, { onType, onMarket, intervalMs = 2
     views.set(source, view);
   }
   const legend = element('div', 'history-legend');
-  const rise = element('span', 'price-up', '↑ 上涨');
-  const fall = element('span', 'price-down', '↓ 下跌');
+  const rise = element('span', 'price-up', '上涨 · 红色');
+  const fall = element('span', 'price-down', '下跌 · 绿色');
   const zone = element('span', '', '北京时间 · 记录采集时刻');
   legend.append(rise, fall, zone);
   root.append(legend);
@@ -198,15 +199,21 @@ export function createPriceHistoryPanel(root, { onType, onMarket, intervalMs = 2
       const priceCell = side => {
         const cell = element('td');
         const movement = historyMovement(side.price, side.previousPrice, view.source, side.delta);
-        cell.append(element('strong', `history-price ${movement.className}`, historyPrice(side.price, view.source)));
-        const change = element('span', `history-change ${movement.className}`, Number.isFinite(side.price) ? movement.text : '无报价');
-        change.setAttribute('aria-label', Number.isFinite(side.price) ? movement.description : '暂无有效报价');
-        cell.append(change);
-        if (view.source === 'pol' && Number.isFinite(side.bid)) {
-          const bid = element('small', 'history-bid', `买一 ${historyPrice(side.bid, 'pol')}`);
-          const bidMovement = historyMovement(side.bid, side.previousBid, 'pol', side.bidDelta);
-          if (bidMovement.className) { bid.classList.add(bidMovement.className); bid.textContent += ` ${side.bidDelta > 0 || side.bid > side.previousBid ? '↑' : '↓'}`; }
-          cell.append(bid);
+        if (view.source === 'pol') {
+          // Pol rows represent actual ask-price changes only. A missing side is
+          // left blank; it is neither a zero quote nor an unavailable event.
+          if (Number.isFinite(side.price)) {
+            const price = element('strong', `history-price ${movement.className}`, historyPrice(side.price, 'pol'));
+            price.setAttribute('aria-label', `${movement.className === 'price-up' ? '上涨' : movement.className === 'price-down' ? '下跌' : '基准报价'}，${historyPrice(side.price, 'pol')}`);
+            cell.append(price);
+          }
+          return cell;
+        }
+        if (Number.isFinite(side.price)) {
+          cell.append(element('strong', `history-price ${movement.className}`, historyPrice(side.price, view.source)));
+          const change = element('span', `history-change ${movement.className}`, movement.text);
+          change.setAttribute('aria-label', movement.description);
+          cell.append(change);
         }
         return cell;
       };
@@ -217,7 +224,7 @@ export function createPriceHistoryPanel(root, { onType, onMarket, intervalMs = 2
       if (record.observedAt) time.dateTime = record.observedAt;
       time.title = `${observed.date} ${observed.time} · ${timezoneName(context.timezone)}`;
       timeCell.append(element('span', 'history-date mono', observed.date), time);
-      if (KINDS[record.kind]) timeCell.append(element('small', `history-kind kind-${record.kind}`, KINDS[record.kind]));
+      if (view.source !== 'pol' && record.kind === 'baseline') timeCell.append(element('small', `history-kind kind-${record.kind}`, KINDS.baseline));
       row.append(priceCell(sides[0] ?? {}), line, priceCell(sides[1] ?? {}), timeCell);
       fragment.append(row);
     }

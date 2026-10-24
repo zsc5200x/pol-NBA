@@ -35,13 +35,13 @@ function render(state) {
   clearButton.disabled = working || !hasSession;
 
   let message = state.message || '';
-  if (state.stage === 'idle' && !hasSession) message = '尚无已验证的皇冠会话。打开登录窗口后，在皇冠页面完成登录，再回来验证保存。';
+  if (state.stage === 'idle' && !hasSession) message = '打开登录窗口并完成皇冠登录，程序会自动验证、保存会话并开始采集。';
   if (state.stage === 'waiting' && !message) message = '请在新开的 Chrome 窗口中完成皇冠登录。';
   if (state.stage === 'waiting' && state.message && !state.canVerify) message = `${state.message} 登录后请等待会员页面完成在线校验。`;
-  if (state.stage === 'recovering') message = state.message || '皇冠会话已失效。请在恢复窗口完成登录，然后验证并保存。';
+  if (state.stage === 'recovering') message = state.message || '皇冠会话已失效。请在恢复窗口完成登录，程序会自动验证并保存。';
   if (state.stage === 'expired') message = state.message || '皇冠确认本机会话已失效。';
   if (state.stage === 'unavailable') message = state.message || '网络暂时无法确认会话状态，已保留本机会话并会稍后重试。';
-  if (state.stage === 'saved' && health === 'valid') message = '皇冠在线验证通过，会话已加密保存在本机。';
+  if (state.stage === 'saved' && health === 'valid') message = '皇冠在线验证通过，会话已加密保存，后台正在采集最新水位。';
   if (state.stage === 'idle' && hasSession) message = `本机已有保存会话${state.lastSavedAt ? `，保存时间：${timestamp(state.lastSavedAt)}` : ''}。可重新验证其有效性。`;
   if (state.networkErrorCode) message += `（网络错误码：${state.networkErrorCode}）`;
   if (hasSession && state.stage !== 'saved' && state.lastSavedAt && state.stage !== 'verifying') message += ` 最近保存：${timestamp(state.lastSavedAt)}。`;
@@ -111,3 +111,6 @@ clearButton.addEventListener('click', () => {
 });
 
 void getStatus();
+// Keep the toolbar truthful when auto-login completes with the dialog closed.
+setInterval(() => { if (!dialog.open && !document.hidden) void getStatus(); }, 5000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) void getStatus(); });

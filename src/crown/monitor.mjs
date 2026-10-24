@@ -6,6 +6,7 @@ import { CrownClient } from './client.mjs';
 import { loadConfig, readJson, verifyEvidence } from './config.mjs';
 import { CrownError, decode, parseList, parseMarkets, coverageFor, scalar, at } from './parser.mjs';
 import { compareMarkets } from './matching.mjs';
+import { isSessionRejectedResponse } from './session-status.mjs';
 
 export const ERRORS = {
  NOT_CONFIGURED:'皇冠尚未配置：需要本机安全会话和经真实响应核对的字段映射。', CONFIG_UNREADABLE:'安全配置不可读取或 JSON 无效。',
@@ -28,11 +29,21 @@ export class CrownMonitor extends EventEmitter {
     this.state = { status: configPath ? 'starting' : 'not_configured', errorCode: configPath ? null : 'NOT_CONFIGURED', lastAttemptAt: null, lastSuccessAt: this.store.meta('lastSuccessAt'), discoveryComplete: false, todayIds: [], earlyIds: [], failedIds: [], collectedIds: [], coverage: {}, activeIds: this.store.meta('activeIds') ?? [], mappingVerified: false };
   }
   start() { if (this.running) return; this.running = true; if (this.configPath) void this.cycle(); }
+  refreshAfterLogin() {
+    if (!this.running || !this.configPath) return;
+    this.failureCount = 0;
+    clearTimeout(this.timer);
+    // A pending cycle may still contain requests made with the previous session.
+    // Finish it, then immediately run one fresh cycle, without overlapping polls.
+    if (this.pending) { this.refreshRequested = true; return; }
+    return this.cycle();
+  }
   async stop() { this.running = false; clearTimeout(this.timer); this.abort?.abort(); this.client?.cancel(); if (this.pending) await this.pending; this.store.close(); }
   async request(mode, profile, args, operation) {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const root = decode(await this.client.request(mode, profile, { ...args, signal: this.abort.signal }));
+        if (isSessionRejectedResponse(root)) throw new CrownError('SESSION_EXPIRED');
         if (profile.invalidSession && profile.invalidSession.values?.map(String).includes(scalar(root, profile.invalidSession.path))) throw new CrownError('SESSION_EXPIRED');
         if (!profile.containerPath || at(root, profile.containerPath) === undefined) throw new CrownError('UNEXPECTED_RESPONSE');
         this.store.task(operation, 'success'); return root;
@@ -50,7 +61,10 @@ export class CrownMonitor extends EventEmitter {
       this.pending = null;
       this.emit('quotes', { observedAt: new Date().toISOString() });
       this.emit('state', this.state);
-      if (this.running) this.timer = setTimeout(() => void this.cycle(), Math.min(300000, (this.config?.intervalMs ?? 30000) * 2 ** Math.min(this.failureCount, 4)));
+      const refreshRequested = this.refreshRequested;
+      this.refreshRequested = false;
+      if (refreshRequested) this.failureCount = 0;
+      if (this.running) this.timer = setTimeout(() => void this.cycle(), refreshRequested ? 0 : Math.min(300000, (this.config?.intervalMs ?? 30000) * 2 ** Math.min(this.failureCount, 4)));
     });
     return this.pending;
   }

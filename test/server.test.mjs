@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { once } from 'node:events';
+import { once, EventEmitter } from 'node:events';
 import { get as httpGet } from 'node:http';
 import { Monitor } from '../src/monitor.mjs';
 import { createApp } from '../server.mjs';
@@ -37,7 +37,7 @@ test('demo HTTP state is explicitly synthetic and serves health plus dashboard a
   assert.equal(health.server, 'ok');
   assert.equal(health.mode, 'demo');
   assert.equal(health.events, state.events.length);
-  for (const [path, mime] of [['/', 'text/html'], ['/app.js', 'text/javascript'], ['/chinese.js', 'text/javascript'], ['/market-lines.js', 'text/javascript'], ['/price-history.js', 'text/javascript'], ['/crown-login.js', 'text/javascript'], ['/styles.css', 'text/css'], ['/logos/lal.svg', 'image/svg+xml']]) {
+  for (const [path, mime] of [['/', 'text/html'], ['/app.js', 'text/javascript'], ['/chinese.js', 'text/javascript'], ['/market-lines.js', 'text/javascript'], ['/price-history.js', 'text/javascript'], ['/hedge-calculator.js', 'text/javascript'], ['/hedge-panel.js', 'text/javascript'], ['/hedge.css', 'text/css'], ['/state-stream.js', 'text/javascript'], ['/crown-login.js', 'text/javascript'], ['/styles.css', 'text/css'], ['/logos/lal.svg', 'image/svg+xml']]) {
     const response = await fetch(`${app.base}${path}`);
     assert.equal(response.status, 200, `${path} should be available`);
     assert.ok(response.headers.get('content-type').startsWith(mime));
@@ -120,6 +120,90 @@ test('SSE immediately sends an identifiable state snapshot and subsequent monito
   await reader.cancel();
 });
 
+test('incremental SSE retains matching baselines across late connections, removed books and reconnects', { timeout: 10000 }, async t => {
+  const app = await demoApp(t);
+  app.monitor.stop();
+  const openStream = async (query = '?delta=1') => {
+    const abort = new AbortController();
+    t.after(() => abort.abort());
+    const response = await fetch(`${app.base}/api/stream${query}`, { signal: abort.signal });
+    assert.equal(response.status, 200);
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    return {
+      close: () => reader.cancel(),
+      async next() {
+        while (true) {
+          const end = buffer.indexOf('\n\n');
+          if (end !== -1) {
+            const block = buffer.slice(0, end); buffer = buffer.slice(end + 2);
+            const event = block.match(/^event: (.+)/m)?.[1];
+            if (event) return { event, data: JSON.parse(block.match(/^data: (.+)/m)[1]) };
+          } else {
+            const chunk = await reader.read();
+            assert.equal(chunk.done, false, 'SSE connection should remain open');
+            buffer += decoder.decode(chunk.value, { stream: true });
+          }
+        }
+      },
+    };
+  };
+  const merge = (state, patch) => {
+    const next = { ...state, ...patch.set, books: { ...state.books, ...patch.books } };
+    for (const token of patch.removedBooks) delete next.books[token];
+    return next;
+  };
+  const first = await openStream();
+  const initial = await first.next();
+  assert.equal(initial.event, 'state');
+  let firstState = initial.data;
+  const legacy = await openStream('');
+  assert.equal((await legacy.next()).event, 'state');
+  const state = app.monitor.snapshot();
+  const [token, otherToken] = Object.keys(state.books);
+  state.books[token].bids[0].price = 0.2222;
+  state.books[token].verifiedAt = '2026-10-23T01:00:00.000Z';
+  state.stream.lastMessageAt = '2026-10-23T01:00:00.000Z';
+  app.monitor.emit('state', state);
+  const changed = await first.next();
+  assert.equal(changed.event, 'patch');
+  assert.deepEqual(Object.keys(changed.data.books), [token]);
+  assert.equal(changed.data.books[token].verifiedAt, state.books[token].verifiedAt);
+  firstState = merge(firstState, changed.data);
+  const legacyUpdate = await legacy.next();
+  assert.equal(legacyUpdate.event, 'state');
+  assert.deepEqual(firstState, legacyUpdate.data);
+
+  // A second tab opens after an upstream mutation but before the next scheduled publish.
+  state.books[otherToken].asks[0].price = 0.7777;
+  const second = await openStream();
+  const secondInitial = await second.next();
+  assert.equal(secondInitial.event, 'state');
+  firstState = merge(firstState, (await first.next()).data);
+  assert.deepEqual(firstState, secondInitial.data);
+  assert.deepEqual((await legacy.next()).data, secondInitial.data);
+
+  delete state.books[token];
+  state.range = 'past';
+  app.crown.state.status = 'offline';
+  app.crown.emit('state', app.crown.state);
+  const removed = await first.next();
+  assert.deepEqual(removed.data.removedBooks, [token]);
+  assert.equal(removed.data.set.range, 'past');
+  assert.equal(removed.data.set.crown.status, 'offline');
+  firstState = merge(firstState, removed.data);
+  const secondState = merge(secondInitial.data, (await second.next()).data);
+  assert.deepEqual(firstState, secondState);
+  assert.deepEqual((await legacy.next()).data, firstState);
+  await first.close();
+  const reconnected = await openStream();
+  const baseline = await reconnected.next();
+  assert.equal(baseline.event, 'state');
+  assert.deepEqual(baseline.data, firstState);
+  await Promise.all([second.close(), legacy.close(), reconnected.close()]);
+});
+
 test('settings accepts supported same-origin values and validates all input shapes', async t => {
   const app = await demoApp(t);
   const send = (body, headers = { 'content-type': 'application/json' }) => fetch(`${app.base}/api/settings`, { method: 'POST', headers, body });
@@ -171,4 +255,13 @@ test('standalone Crown login routes are local-only and never link to HD', async 
   const missingOrigin = await fetch(`${app.base}/api/crown/login/start`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
   assert.equal(missingOrigin.status, 403, 'login writes require a same-origin browser request');
   assert.equal(calls, 1, 'rejected origins must not launch a browser');
+});
+
+test('verified login saves immediately wake the collector, without exposing login data', async t => {
+  const service = Object.assign(new EventEmitter(), { startMonitoring() {}, close: async () => {} });
+  const app = await demoApp(t, { crownLogin: service });
+  let refreshes = 0;
+  app.crown.refreshAfterLogin = () => { refreshes++; };
+  service.emit('sessionSaved', { verifiedAt: '2026-10-23T06:00:00.000Z' });
+  assert.equal(refreshes, 1);
 });

@@ -7,6 +7,7 @@
   <title>篮场 · 美职篮盘口监控</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Ccircle cx='20' cy='20' r='20' fill='%23c8f06e'/%3E%3Ccircle cx='20' cy='20' r='10' fill='none' stroke='%23171a1c' stroke-width='3'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/hedge.css">
 </head>
 <body>
   <div class="app-shell">
@@ -25,7 +26,7 @@
       <div class="notice hidden" id="notice" role="status"></div>
 
       <div class="terminal-layout">
-        <aside class="games-panel panel"><div class="panel-heading"><h2>比赛列表</h2><span class="mono" id="game-count">0 场比赛</span></div><div id="games" class="games-list"></div><div class="panel-footnote">时间按所选时区显示<br>赛程每分钟自动刷新</div></aside>
+        <aside class="games-panel panel"><div class="panel-heading"><h2>比赛列表</h2><span class="mono" id="game-count" role="status" aria-atomic="true">0 场比赛</span></div><div id="games" class="games-list" tabindex="-1" aria-label="比赛列表"></div><div class="panel-footnote">有利润时显示含反水预计利润<br>金额为每场最高值，随报价更新</div></aside>
 
         <section class="market-panel panel"><div class="panel-heading"><h2>市场盘口</h2><a id="market-link" class="external-link hidden" target="_blank" rel="noopener noreferrer">查看市场 ↗</a></div><div id="match-heading" class="match-heading"></div><div id="markets" class="market-list" tabindex="0" role="region" aria-label="市场盘口内容，可上下滚动"></div></section>
 
@@ -37,7 +38,7 @@
       <footer><span><span class="footer-dot"></span> 只读监控 · 不提交订单</span><span>价格单位为美分 · 数量单位为份 · 每份结算价值最高 1 美元</span><span>数据来源：预测市场官方接口</span></footer>
     </main>
   </div>
-  <dialog id="crown-login-dialog" class="crown-login-dialog" aria-labelledby="crown-login-title">
+  <dialog id="crown-login-dialog" class="crown-login-dialog hedge-config-dialog" aria-labelledby="crown-login-title">
     <div class="login-dialog-heading"><h2 id="crown-login-title">皇冠账号配置</h2><button id="crown-login-close" class="button-quiet" type="button" aria-label="关闭">关闭</button></div>
     <p id="crown-login-status" class="login-status" role="status" aria-live="polite">正在读取本机会话状态</p>
     <div class="login-actions">
@@ -46,6 +47,18 @@
       <button id="crown-login-cancel" class="button-quiet" type="button" hidden>关闭登录窗口</button>
       <button id="crown-login-clear" class="button-danger" type="button" disabled>清除已保存会话</button>
     </div>
+    <form id="hedge-settings-form" class="hedge-settings" novalidate>
+      <div class="hedge-settings-heading"><h3>打水配置</h3><span>仅用于对冲计算</span></div>
+      <div class="hedge-settings-fields">
+        <label for="hedge-crown-stake">皇冠下注本金（人民币）<input id="hedge-crown-stake" name="crownStake" type="number" min="0.01" step="any" inputmode="decimal" required></label>
+        <label for="hedge-exchange-rate">汇率（1 美元兑人民币）<input id="hedge-exchange-rate" name="exchangeRate" type="number" min="0.0001" step="any" inputmode="decimal" required aria-describedby="hedge-exchange-help"></label>
+        <label for="hedge-rebate-percent">有效金额反水（%）<input id="hedge-rebate-percent" name="rebatePercent" type="number" min="0" max="100" step="any" inputmode="decimal" required aria-describedby="hedge-rebate-help"></label>
+      </div>
+      <p id="hedge-exchange-help" class="hedge-settings-note">汇率请手动填写，初始 7.00 仅为示例，不会自动更新。</p>
+      <p id="hedge-rebate-help" class="hedge-settings-note">输入 3.1 表示 3.1%。有效金额 = 本金 × 皇冠水位，输赢都按该有效金额计算反水。</p>
+      <p class="hedge-settings-example">例如：100 元 × 0.98 × 3.1% = 3.038 元反水；水位 1.03 时，有效金额为 103 元。</p>
+      <div class="hedge-settings-footer"><button class="hedge-save" type="submit">保存打水配置</button><p id="hedge-settings-status" class="hedge-settings-status" role="status" aria-live="polite"></p></div>
+    </form>
   </dialog>
   <script type="module" src="/app.js"></script>
   <script type="module" src="/crown-login.js"></script>

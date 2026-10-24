@@ -4,12 +4,19 @@ import { historyPrice, historyMovement, historyTime, recordsForSelection, ordere
 
 test('历史按平台单位显示，缺失价格不作为零，涨跌避免浮点误差', () => {
   assert.equal(historyPrice(0.52, 'pol'), '52 分');
-  assert.equal(historyPrice(0.95, 'crown'), '0.950');
+  assert.equal(historyPrice(0.95, 'crown'), '0.95');
   assert.equal(historyPrice(null, 'crown'), '—');
   assert.equal(historyMovement(0.52, 0.50, 'pol').text, '↑ +2 分');
-  assert.equal(historyMovement(0.9, 0.95, 'crown').text, '↓ −0.050');
+  assert.equal(historyMovement(0.9, 0.95, 'crown').text, '↓ −0.05');
   assert.equal(historyMovement(0.1 + 0.2, 0.3, 'pol').text, '持平');
   assert.equal(historyMovement(null, 0.95, 'crown').description, '无前次有效报价');
+});
+
+test('Pol历史报价颜色以上次有效卖一价为准，红涨绿跌且不显示涨跌差额', () => {
+  assert.equal(historyMovement(0.51, 0.50, 'pol', 0.01).className, 'price-up');
+  assert.equal(historyMovement(0.49, 0.51, 'pol', -0.02).className, 'price-down');
+  assert.equal(historyMovement(0.50, null, 'pol', null).className, '', '首次有效报价作为无色基准');
+  assert.equal(historyPrice(0.51, 'pol'), '51 分');
 });
 
 test('历史遵循后端不可比判定，不对不同赔率格式或无效报价重算涨跌', () => {
@@ -33,6 +40,17 @@ test('响应过滤严格限制同场同线同平台，避免异步切换时串�
     { ...base, id: 5, source: 'crown' },
   ];
   assert.deepEqual(recordsForSelection(records, context, 'pol').map(row => row.id), [9, 1]);
+});
+
+test('皇冠历史隐藏双方均无有效水位的行，但保留单边有效变化', () => {
+  const context = { event: { id: 'e1' }, market: { id: 'm1' }, type: 'spreads' };
+  const crown = { eventId: 'e1', marketId: 'm1', type: 'spreads', source: 'crown' };
+  const records = [
+    { ...crown, id: 3, sides: [{ price: null }, { price: null }], kind: 'unavailable' },
+    { ...crown, id: 2, sides: [{ price: 0.95 }, { price: null }], kind: 'change' },
+    { ...crown, id: 1, sides: [{ price: 0.95 }, { price: 0.9 }], kind: 'baseline' },
+  ];
+  assert.deepEqual(recordsForSelection(records, context, 'crown').map(row => row.id), [2, 1]);
 });
 
 test('让分双方按盘口参考球队排序，并按token匹配价格而非响应数组顺序', () => {

@@ -3,6 +3,9 @@ import { RANGES, TIMEZONES, normalizeBook, selectEvents, updateLevel } from './d
 import { Polymarket } from './upstream.mjs';
 
 const iso = () => new Date().toISOString();
+const PUBLISH_DELAY_MS = 100;
+const BOOK_BATCH_SIZE = 50;
+const BOOK_CONCURRENCY = 4;
 
 export class Monitor extends EventEmitter {
   constructor({ demo = false, upstream = new Polymarket(), range = 'upcoming', timezone = 'Asia/Shanghai' } = {}) {
@@ -83,7 +86,7 @@ export class Monitor extends EventEmitter {
     this.broadcastTimer = setTimeout(() => {
       this.broadcastTimer = undefined;
       if (!this.stopped) this.emit('state', this.state);
-    }, 250);
+    }, PUBLISH_DELAY_MS);
   }
 
   async refreshEvents() {
@@ -106,6 +109,7 @@ export class Monitor extends EventEmitter {
           this.connect();
         } else if (!this.ws && tokens.length) this.connect();
         this.emit('markets', this.state.events);
+        this.publish();
         await this.refreshBooks();
       } catch (error) {
         if (generation === this.generation && !this.stopped) this.discoveryError = `比赛列表获取失败：${error.message}`;
@@ -125,7 +129,7 @@ export class Monitor extends EventEmitter {
     const ids = [...this.tokens];
     const failures = [];
     const pending = [];
-    for (let i = 0; i < ids.length; i += 50) pending.push(ids.slice(i, i + 50));
+    for (let i = 0; i < ids.length; i += BOOK_BATCH_SIZE) pending.push(ids.slice(i, i + BOOK_BATCH_SIZE));
     const worker = async () => {
       while (pending.length && !this.stopped && generation === this.generation) {
         const batch = pending.shift();
@@ -155,10 +159,13 @@ export class Monitor extends EventEmitter {
           if (generation !== this.generation || this.stopped) return;
           failures.push(error.message);
           for (const id of batch) this.markBookError(id, error.message);
+        } finally {
+          // Make completed batches visible even while another request is slow.
+          if (generation === this.generation && !this.stopped) this.publish();
         }
       }
     };
-    try { await Promise.all([worker(), worker()]); }
+    try { await Promise.all(Array.from({ length: Math.min(BOOK_CONCURRENCY, pending.length) }, () => worker())); }
     finally {
       this.booksPending = false;
       if (generation === this.generation && !this.stopped) {
