@@ -5,21 +5,23 @@
   "type": "module",
   "description": "Read-only NBA market price and order book monitor for Polymarket",
   "engines": {
-    "node": ">=22.13.0"
+    "node": ">=24.0.0"
   },
   "scripts": {
-    "start": "node server.mjs",
-    "demo": "node server.mjs --demo",
+    "start": "node --env-file-if-exists=.env server.mjs",
+    "demo": "node --env-file-if-exists=.env server.mjs --demo",
     "test": "node --test",
-    "check": "node --check server.mjs && node --check src/domain.mjs && node --check src/upstream.mjs && node --check src/monitor.mjs && node --check src/state-stream.mjs && node --check public/state-stream.js && node --check public/app.js && node --check public/chinese.js && node --check public/market-lines.js && node --check public/crown-login.js && node --check src/crown/parser.mjs && node --check src/crown/config.mjs && node --check src/crown/client.mjs && node --check src/crown/login.mjs && node --check src/crown/network.mjs && node --check src/crown/endpoints.mjs && node --check src/crown/session-status.mjs && node --check src/crown/monitor.mjs && node --check src/crown/matching.mjs && node --check src/crown/store.mjs && node --check scripts/crown-check.mjs && node --check src/crown/captures.mjs && node --check scripts/crown-inspect.mjs && node --check src/price-history.mjs && node --check public/price-history.js && node --check public/hedge-calculator.js && node --check public/hedge-panel.js",
+    "check": "node --check server.mjs && node --check src/domain.mjs && node --check src/upstream.mjs && node --check src/monitor.mjs && node --check src/state-stream.mjs && node --check public/state-stream.js && node --check public/app.js && node --check public/chinese.js && node --check public/market-lines.js && node --check public/crown-login.js && node --check src/crown/parser.mjs && node --check src/crown/config.mjs && node --check src/crown/client.mjs && node --check src/crown/login.mjs && node --check src/crown/network.mjs && node --check src/crown/endpoints.mjs && node --check src/crown/session-status.mjs && node --check src/crown/monitor.mjs && node --check src/crown/matching.mjs && node --check src/crown/store.mjs && node --check scripts/crown-check.mjs && node --check src/crown/captures.mjs && node --check scripts/crown-inspect.mjs && node --check src/price-history.mjs && node --check public/price-history.js && node --check public/hedge-calculator.js && node --check public/hedge-panel.js && node --check src/trading/signal.mjs && node --check src/trading/matcher.mjs && node --check src/trading/telegram.mjs && node --check src/trading/store.mjs && node --check src/trading/executor.mjs && node --check public/trading.js",
     "crown:check": "node scripts/crown-check.mjs",
     "crown:inspect": "node scripts/crown-inspect.mjs"
   },
   "dependencies": {
+    "@polymarket/client": "0.14.0",
     "fast-xml-parser": "5.11.2",
     "https-proxy-agent": "7.0.6",
     "keytar": "7.9.0",
     "playwright-core": "1.64.1",
+    "viem": "2.57.11",
     "ws": "8.22.0"
   }
 }

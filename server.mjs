@@ -8,10 +8,12 @@ import { PriceHistory } from './src/price-history.mjs';
 import { CrownMonitor } from './src/crown/monitor.mjs';
 import { CrownLoginError, CrownLoginService } from './src/crown/login.mjs';
 import { StateStream } from './src/state-stream.mjs';
+import { TradingExecutor } from './src/trading/executor.mjs';
+import { TradingStateStore } from './src/trading/store.mjs';
 
 const PUBLIC = fileURLToPath(new URL('./public/', import.meta.url));
 const DEFAULT_CROWN_CONFIG = resolve('.local/crown/live-config.json');
-const FILES = new Map([['/', 'index.html'], ['/app.js', 'app.js'], ['/chinese.js', 'chinese.js'], ['/market-lines.js', 'market-lines.js'], ['/price-history.js', 'price-history.js'], ['/crown-login.js', 'crown-login.js'], ['/styles.css', 'styles.css']]);
+const FILES = new Map([['/', 'index.html'], ['/app.js', 'app.js'], ['/chinese.js', 'chinese.js'], ['/market-lines.js', 'market-lines.js'], ['/price-history.js', 'price-history.js'], ['/crown-login.js', 'crown-login.js'], ['/trading.js', 'trading.js'], ['/styles.css', 'styles.css'], ['/trading.css', 'trading.css']]);
 for (const filename of ['hedge-calculator.js', 'hedge-panel.js', 'hedge.css', 'state-stream.js']) FILES.set(`/${filename}`, filename);
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
 
@@ -54,8 +56,25 @@ function crownConfigPath(monitor) {
   return existsSync(DEFAULT_CROWN_CONFIG) ? DEFAULT_CROWN_CONFIG : null;
 }
 
-export function createApp({ monitor = new Monitor(), crown = new CrownMonitor({ configPath: crownConfigPath(monitor) }), crownLogin = new CrownLoginService(), priceHistory = new PriceHistory({ monitor, crown, filename: monitor.demo ? ':memory:' : process.env.PRICE_HISTORY_DB_PATH ?? resolve('.local/price-history.sqlite') }) } = {}) {
+async function readTradingJson(request, allowedKeys) {
+  if (!request.headers['content-type']?.startsWith('application/json')) throw Object.assign(new Error('请求格式无效。'), { statusCode: 415 });
+  let body = '';
+  for await (const chunk of request) {
+    body += chunk;
+    if (body.length > 4096) throw Object.assign(new Error('请求内容过大。'), { statusCode: 413 });
+  }
+  let value;
+  try { value = JSON.parse(body || '{}'); } catch { throw Object.assign(new Error('请求格式无效。'), { statusCode: 400 }); }
+  if (!value || Array.isArray(value) || typeof value !== 'object' || Object.keys(value).some(key => !allowedKeys.includes(key))) {
+    throw Object.assign(new Error('交易配置无效。'), { statusCode: 400 });
+  }
+  return value;
+}
+
+export function createApp({ monitor = new Monitor(), crown = new CrownMonitor({ configPath: crownConfigPath(monitor) }), crownLogin = new CrownLoginService(), priceHistory = new PriceHistory({ monitor, crown, filename: monitor.demo ? ':memory:' : process.env.PRICE_HISTORY_DB_PATH ?? resolve('.local/price-history.sqlite') }), trading = new TradingExecutor({ monitor, store: new TradingStateStore(), env: process.env }) } = {}) {
   const stream = new StateStream();
+  const tradingReady = Promise.resolve().then(() => trading.init?.());
+  void tradingReady.catch(() => {});
   const snapshot = () => {
     const marketState = monitor.snapshot();
     return { ...marketState, crown: crown.snapshot(marketState) };
@@ -71,6 +90,32 @@ export function createApp({ monitor = new Monitor(), crown = new CrownMonitor({ 
     response.setHeader('Referrer-Policy', 'no-referrer');
     response.setHeader('Content-Security-Policy', "default-src 'self'; connect-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-ancestors 'none'");
     const json = (status, payload) => { response.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); response.end(JSON.stringify(payload)); };
+    if (request.method === 'GET' && url.pathname === '/api/trading/status') {
+      if (!isLocalSameOriginRead(request)) { json(403, { error: '自动交易仅允许本机同源访问' }); return; }
+      try { await tradingReady; json(200, trading.status()); }
+      catch { json(503, { error: '无法读取自动交易状态。' }); }
+      return;
+    }
+    const tradingActions = new Map([
+      ['/api/trading/settings', { keys: ['stakeUsdc', 'buySlippage', 'takeProfitIncrement'], run: value => trading.configureSettings(value), success: 200 }],
+      ['/api/trading/enable', { keys: [], run: () => trading.enable(), success: 200 }],
+      ['/api/trading/disable', { keys: [], run: () => trading.disable(), success: 200 }],
+    ]);
+    const tradingAction = tradingActions.get(url.pathname);
+    if (request.method === 'POST' && tradingAction) {
+      if (!isLocalSameOriginWrite(request)) { json(403, { error: '自动交易操作仅允许本机同源访问' }); return; }
+      try {
+        await tradingReady;
+        const body = await readTradingJson(request, tradingAction.keys);
+        await tradingAction.run(body);
+        json(tradingAction.success, trading.status());
+      } catch (error) {
+        const statusCode = Number.isInteger(error?.statusCode) && error.statusCode >= 400 && error.statusCode <= 599 ? error.statusCode : 400;
+        const message = typeof error?.publicMessage === 'string' ? error.publicMessage : error?.statusCode ? error.message : '自动交易操作未完成。';
+        json(statusCode, { error: message });
+      }
+      return;
+    }
     if (request.method === 'GET' && url.pathname === '/api/crown/login/status') {
       if (!isLocalSameOriginRead(request)) { json(403, { error: '皇冠登录仅允许本机同源访问' }); return; }
       try { json(200, await crownLogin.status()); }
@@ -170,8 +215,16 @@ export function createApp({ monitor = new Monitor(), crown = new CrownMonitor({ 
   const heartbeat = setInterval(() => stream.heartbeat(), 15000);
   heartbeat.unref();
   server.on('close', () => { clearInterval(heartbeat); monitor.off('state', broadcast); crown.off?.('state', broadcast); crownLogin.off?.('sessionSaved', onSessionSaved); priceHistory.close(); });
-  server.on('listening', () => { crown.start(); void crownLogin.startMonitoring?.(); });
-  return { server, monitor, crown, crownLogin, priceHistory, close: () => { monitor.stop(); stream.close(); void Promise.all([crown.stop(), crownLogin.close()]).finally(() => server.close()); } };
+  server.on('listening', () => { crown.start(); void crownLogin.startMonitoring?.(); void tradingReady.then(() => trading.startReceiver?.()).catch(() => {}); });
+  return {
+    server, monitor, crown, crownLogin, priceHistory, trading,
+    close: async () => {
+      monitor.stop();
+      stream.close();
+      await Promise.all([trading.close?.(), crown.stop(), crownLogin.close()]);
+      if (server.listening) await new Promise(resolveClose => server.close(resolveClose));
+    },
+  };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

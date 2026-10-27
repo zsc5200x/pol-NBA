@@ -37,7 +37,7 @@ test('demo HTTP state is explicitly synthetic and serves health plus dashboard a
   assert.equal(health.server, 'ok');
   assert.equal(health.mode, 'demo');
   assert.equal(health.events, state.events.length);
-  for (const [path, mime] of [['/', 'text/html'], ['/app.js', 'text/javascript'], ['/chinese.js', 'text/javascript'], ['/market-lines.js', 'text/javascript'], ['/price-history.js', 'text/javascript'], ['/hedge-calculator.js', 'text/javascript'], ['/hedge-panel.js', 'text/javascript'], ['/hedge.css', 'text/css'], ['/state-stream.js', 'text/javascript'], ['/crown-login.js', 'text/javascript'], ['/styles.css', 'text/css'], ['/logos/lal.svg', 'image/svg+xml']]) {
+  for (const [path, mime] of [['/', 'text/html'], ['/app.js', 'text/javascript'], ['/chinese.js', 'text/javascript'], ['/market-lines.js', 'text/javascript'], ['/price-history.js', 'text/javascript'], ['/hedge-calculator.js', 'text/javascript'], ['/hedge-panel.js', 'text/javascript'], ['/hedge.css', 'text/css'], ['/state-stream.js', 'text/javascript'], ['/crown-login.js', 'text/javascript'], ['/trading.js', 'text/javascript'], ['/trading.css', 'text/css'], ['/styles.css', 'text/css'], ['/logos/lal.svg', 'image/svg+xml']]) {
     const response = await fetch(`${app.base}${path}`);
     assert.equal(response.status, 200, `${path} should be available`);
     assert.ok(response.headers.get('content-type').startsWith(mime));
@@ -54,6 +54,51 @@ test('demo HTTP state is explicitly synthetic and serves health plus dashboard a
   assert.equal((await fetch(`${app.base}/logos/zzz.svg`)).status, 404);
   assert.equal((await fetch(`${app.base}/logos/NOTICE.md`)).status, 404);
   assert.equal((await fetch(`${app.base}/logos/%2e%2e/server.mjs`)).status, 404);
+});
+
+test('trading routes require strict local same-origin access and keep status outside market state', async t => {
+  const actions = [];
+  const state = {
+    enabled: false,
+    ready: true,
+    settings: { stakeUsdc: 5, buySlippage: 0.02, takeProfitIncrement: 0.02 },
+    credentials: { telegram: true, polymarket: true },
+    receiver: { configured: true, running: true, lastPollAt: new Date().toISOString(), lastError: null, stopReason: null },
+    records: [],
+  };
+  const trading = {
+    async init() {},
+    status: () => structuredClone(state),
+    async configureSettings(value) { actions.push(['settings', value]); },
+    async enable() { actions.push(['enable']); state.enabled = true; },
+    async disable() { actions.push(['disable']); state.enabled = false; },
+    async close() {},
+  };
+  const app = await demoApp(t, { trading });
+  const statusResponse = await fetch(`${app.base}/api/trading/status`);
+  assert.equal(statusResponse.status, 200);
+  assert.equal(statusResponse.headers.get('cache-control'), 'no-store');
+  assert.deepEqual((await statusResponse.json()).credentials, { telegram: true, polymarket: true });
+
+  const marketState = await (await fetch(`${app.base}/api/state`)).json();
+  assert.equal(Object.hasOwn(marketState, 'trading'), false);
+  assert.equal((await fetch(`${app.base}/api/trading/status`, { headers: { origin: 'https://untrusted.example' } })).status, 403);
+
+  const post = (path, body, headers = {}) => fetch(`${app.base}${path}`, {
+    method: 'POST',
+    headers: { origin: app.base, 'content-type': 'application/json', ...headers },
+    body: JSON.stringify(body),
+  });
+  assert.equal((await post('/api/trading/settings', { stakeUsdc: 8, buySlippage: 0.02, takeProfitIncrement: 0.03 })).status, 200);
+  assert.equal((await post('/api/trading/enable', {})).status, 200);
+  assert.equal((await post('/api/trading/disable', {})).status, 200);
+  assert.deepEqual(actions, [
+    ['settings', { stakeUsdc: 8, buySlippage: 0.02, takeProfitIncrement: 0.03 }],
+    ['enable'],
+    ['disable'],
+  ]);
+  assert.equal((await post('/api/trading/enable', {}, { origin: 'https://untrusted.example' })).status, 403);
+  assert.equal((await fetch(`${app.base}/api/trading/enable`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).status, 403);
 });
 
 test('price history validates filters and pagination and restricts reads to this local app', async t => {

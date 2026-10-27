@@ -1,0 +1,62 @@
+.page-toolbar-actions #trading-open{display:inline-flex;align-items:center;gap:8px;background:#202927;border-color:#45514a;color:#d4ddd6}
+.page-toolbar-actions #trading-open[data-enabled="true"]{border-color:#a9cb66;color:#d9f4ae}
+.trading-state-dot{width:7px;height:7px;border-radius:50%;background:#7c8580;flex:none}
+#trading-open[data-enabled="true"] .trading-state-dot{background:#c8f06e;box-shadow:0 0 8px #c8f04570}
+.trading-dialog{width:min(620px,calc(100vw - 28px));max-height:min(88dvh,780px);overflow:auto;overscroll-behavior:contain;margin:auto;padding:0;border:1px solid #41494a;border-radius:7px;background:#171b1d;color:var(--text);box-shadow:0 24px 80px #0009}
+.trading-dialog::backdrop{background:#080a0bdd}
+.trading-dialog-heading{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:18px 20px;border-bottom:1px solid var(--line)}
+.trading-dialog-heading h2{margin:4px 0 0;font-size:17px;font-weight:600}
+.trading-eyebrow{font:9px var(--mono);color:#8f9b91}
+.trading-dialog button{min-height:36px;padding:0 13px;border:1px solid #414a4b;border-radius:4px;background:#202728;color:var(--text);font-size:12px}
+.trading-dialog button:disabled{cursor:not-allowed;opacity:.45}
+.trading-dialog .trading-close{background:transparent;color:#aab4b2}
+.trading-status{margin:0;padding:14px 20px;background:#202725;border-bottom:1px solid var(--line);color:#b9c5bc;font-size:12px;line-height:1.7;overflow-wrap:anywhere}
+.trading-status[data-enabled="true"]{color:#d9f4ae;background:#252d22}
+.trading-status[data-error="true"]{color:#e7a99c;background:#2a211f}
+.trading-credentials{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-bottom:1px solid var(--line)}
+.trading-credentials>div{display:flex;flex-direction:column;gap:7px;padding:14px 18px;border-right:1px solid var(--line);min-width:0}
+.trading-credentials>div:last-child{border:0}
+.trading-credentials span{font-size:10px;color:#89938e}
+.trading-credentials strong{font-size:12px;font-weight:500;line-height:1.5;overflow-wrap:anywhere;color:#d8dfd9}
+.trading-credentials strong[data-ready="true"]{color:#c8e9a0}
+.trading-settings,.trading-records{padding:18px 20px;border-bottom:1px solid var(--line)}
+.trading-section-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px}
+.trading-section-heading h3{margin:0;font-size:13px;font-weight:600}
+.trading-section-heading>span{font-size:10px;color:#78847e;text-align:right}
+.trading-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.trading-fields label{display:flex;flex-direction:column;gap:7px;min-width:0;color:#aab4ad;font-size:10px;line-height:1.5}
+.trading-fields input{width:100%;min-width:0;height:40px;padding:0 10px;border:1px solid #3d4846;border-radius:4px;background:#111617;color:#eef2ed;font:13px var(--mono);font-variant-numeric:tabular-nums}
+.trading-fields input:focus{outline:2px solid #a9cb66;outline-offset:1px}
+.trading-fields input::placeholder{color:#59635e;font:11px var(--font)}
+.trading-note{margin:11px 0 0;color:#78847e;font-size:10px;line-height:1.7}
+.trading-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:15px}
+.trading-dialog .trading-save{border-color:#4a5550;background:#252c2b}
+.trading-dialog .trading-enable{border-color:#a9cb66;background:#c8f06e;color:#172014;font-weight:600}
+.trading-dialog .trading-disable{border-color:#7c514b;background:#2a1e1d;color:#e6b0a4}
+.trading-action-status{min-height:18px;margin:9px 0 0;color:#8e9992;font-size:11px;line-height:1.6;overflow-wrap:anywhere}
+.trading-action-status[data-kind="success"]{color:#c8e9a0}
+.trading-action-status[data-kind="error"]{color:#e7a99c}
+.trading-record-list{display:flex;flex-direction:column}
+.trading-record{padding:12px 0;border-top:1px solid #2b3433;min-width:0}
+.trading-record:first-child{border-top:0}
+.trading-record-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.trading-record-top strong{font-size:12px;font-weight:600;overflow-wrap:anywhere}
+.trading-record-state{flex:none;color:#b5c29e;font-size:10px}
+.trading-record-state.state-failed,.trading-record-state.state-error,.trading-record-state.state-unmatched{color:#e7a99c}
+.trading-record-details,.trading-record-meta{margin:6px 0 0;color:#a0aaa3;font-size:10px;line-height:1.6;overflow-wrap:anywhere}
+.trading-record-meta{color:#707c75}
+.trading-empty{margin:0;padding:16px 0;color:#78847e;font-size:11px}
+@media(max-width:760px){
+  .page-toolbar-actions{flex-wrap:wrap}
+  .trading-dialog{max-height:calc(100dvh - 20px)}
+  .trading-dialog-heading{padding:14px}
+  .trading-status{padding:12px 14px}
+  .trading-credentials>div{padding:12px 9px;gap:6px}
+  .trading-credentials span{font-size:9px}
+  .trading-credentials strong{font-size:10px}
+  .trading-settings,.trading-records{padding:15px 14px}
+  .trading-fields{grid-template-columns:minmax(0,1fr);gap:10px}
+  .trading-fields label{font-size:11px}
+  .trading-fields input{height:42px;font-size:14px}
+  .trading-actions button{flex:1 1 100%;min-height:40px}
+}
